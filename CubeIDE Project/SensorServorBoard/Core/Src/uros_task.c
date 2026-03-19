@@ -60,7 +60,7 @@ static void fill_timestamp(builtin_interfaces__msg__Time *stamp)
 }
 
 /* Servo command subscriber callback */
-static float servo_angles[5] = {90.0f, 90.0f, 90.0f, 90.0f, 90.0f};
+static float servo_angles[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
 static void servo_cmd_callback(const void * msgin)
 {
@@ -120,6 +120,9 @@ static void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 void StartuROSTask(void *argument)
 {
     (void)argument;
+
+    /* Start servo PWM timers */
+    ServoControl_Init();
 
     /* Register custom UART DMA transport */
     rmw_uros_set_custom_transport(
@@ -223,7 +226,7 @@ void StartuROSTask(void *argument)
 
     /* Pre-allocate subscription message buffer */
     static std_msgs__msg__Float32MultiArray servo_cmd_msg;
-    static float servo_cmd_data[5] = {90.0f, 90.0f, 90.0f, 90.0f, 90.0f};
+    static float servo_cmd_data[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     servo_cmd_msg.data.data = servo_cmd_data;
     servo_cmd_msg.data.capacity = 5;
     servo_cmd_msg.data.size = 5;
