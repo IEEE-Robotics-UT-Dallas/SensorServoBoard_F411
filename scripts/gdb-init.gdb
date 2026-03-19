@@ -12,8 +12,13 @@ break HardFault_Handler
 break BusFault_Handler
 break UsageFault_Handler
 
-# FreeRTOS thread awareness (shows tasks as GDB threads)
-monitor rtos auto
+# FreeRTOS thread awareness (may not work with HLA/ST-Link V2)
+python
+try:
+    gdb.execute('monitor rtos auto', to_string=True)
+except:
+    pass
+end
 
 # Load debug dashboard (ssb commands)
 source scripts/gdb-dashboard.py
