@@ -21,18 +21,8 @@ except:
     pass
 end
 
-# Load debug dashboard (ssb commands)
+# Load debug dashboard (ssb + boot commands)
 source scripts/gdb-dashboard.py
 
-# Reset, boot firmware, wait for FreeRTOS to start, then halt and show dashboard
-python
-import time
-gdb.execute('monitor reset init', to_string=True)
-gdb.execute('monitor resume', to_string=True)
-print("Booting firmware (2s)...", flush=True)
-time.sleep(2)
-gdb.execute('monitor halt', to_string=True)
-time.sleep(0.05)
-gdb.execute('ssb health', to_string=False)
-print("\nType 'c' to resume, Ctrl+C to halt, 'ssb' to inspect, 'quit' to exit.")
-end
+# Boot firmware: reset → run 3s → halt → show health check
+boot

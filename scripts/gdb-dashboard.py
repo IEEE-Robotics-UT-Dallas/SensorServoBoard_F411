@@ -18,6 +18,9 @@ Usage (from GDB prompt):
 import gdb
 import struct
 import time
+import os
+import signal
+import threading
 
 # ── STM32F411CEU6 Register Map ───────────────────────────────────
 
@@ -459,11 +462,11 @@ def watch_loop(interval):
     count = 0
     try:
         while True:
-            # Clear screen and move cursor home
             print("\033[2J\033[H", end='', flush=True)
             print(f"{BOLD}SensorServoBoard F411{RESET}  "
                   f"{DIM}sample #{count}{RESET}")
 
+            # Halt CPU, read state, resume via GDB continue + timed interrupt
             gdb.execute('monitor halt', to_string=True)
             time.sleep(0.01)
 
@@ -471,11 +474,11 @@ def watch_loop(interval):
             show_servos()
             show_memory()
 
-            gdb.execute('monitor resume', to_string=True)
-
             info(f"\n  {DIM}[{interval:.1f}s interval — Ctrl+C to stop]{RESET}")
             count += 1
-            time.sleep(interval)
+
+            # Resume target for the interval, then auto-halt
+            _timed_continue(interval)
 
     except KeyboardInterrupt:
         print(f"\n{BOLD}Watch stopped.{RESET} Target halted for inspection.")
@@ -484,12 +487,51 @@ def watch_loop(interval):
         except Exception:
             pass
 
+def _timed_continue(seconds):
+    """Resume target via GDB continue, auto-interrupt after delay."""
+    def _interrupt():
+        time.sleep(seconds)
+        os.kill(os.getpid(), signal.SIGINT)
+    t = threading.Thread(target=_interrupt, daemon=True)
+    t.start()
+    try:
+        gdb.execute('continue', to_string=True)
+    except gdb.error:
+        pass
+    except KeyboardInterrupt:
+        pass
+
+# ── Boot Command ─────────────────────────────────────────────────
+
+class BootCommand(gdb.Command):
+    """Reset MCU, let FreeRTOS boot, halt, show health check.
+    Usage: boot [seconds]  (default: 3s boot time)"""
+
+    def __init__(self):
+        super().__init__('boot', gdb.COMMAND_USER)
+
+    def invoke(self, arg, from_tty):
+        wait = float(arg) if arg.strip() else 3.0
+        print(f"Resetting and booting firmware ({wait:.0f}s)...")
+
+        gdb.execute('monitor reset init', to_string=True)
+        _timed_continue(wait)
+
+        time.sleep(0.05)
+        run_health()
+        print(f"\nType {BOLD}'c'{RESET} to resume, "
+              f"{BOLD}Ctrl+C{RESET} to halt, "
+              f"{BOLD}'ssb'{RESET} to inspect.")
+
+BootCommand()
+
 # ── Main Command ─────────────────────────────────────────────────
 
 HELP_TEXT = f"""{BOLD}
 SensorServoBoard F411 — Debug Dashboard{RESET}
 {DIM}Terminal-native firmware inspection via ST-Link{RESET}
 
+  {BOLD}boot{RESET} [sec]       Reset + boot firmware + health check (default 3s)
   {BOLD}ssb{RESET}              System overview (sensors + servos + memory + tasks)
   {BOLD}ssb sensors{RESET}      ToF distances, magnetometer, light sensor
   {BOLD}ssb servos{RESET}       PWM timer state and servo angles
