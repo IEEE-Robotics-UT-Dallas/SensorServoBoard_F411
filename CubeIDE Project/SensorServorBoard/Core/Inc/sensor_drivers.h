@@ -17,15 +17,20 @@ extern I2C_HandleTypeDef hi2c3;
 /* Default VL53L0X I2C Address (8-bit) */
 #define VL53L0X_DEFAULT_ADDR 0x52
 
-/* Magnetometer (QMC5883L) Registers & Address */
-#define QMC5883L_ADDR_8BIT   0x1A /* 0x0D << 1 */
-#define QMC5883L_REG_OUT_X_L 0x00
-#define QMC5883L_REG_CTRL1   0x09
+/* Magnetometer (MLX90393) Commands & Address */
+#define MLX90393_ADDR_8BIT    0x18  /* 0x0C << 1 */
+#define MLX90393_CMD_RT       0xF0  /* Reset */
+#define MLX90393_CMD_EX       0x80  /* Exit mode */
+#define MLX90393_CMD_SM_XYZ   0x3E  /* Start single measurement XYZ */
+#define MLX90393_CMD_RM_XYZ   0x4E  /* Read measurement XYZ */
 
-/* Light Sensor (BH1750) Registers & Address */
-#define BH1750_ADDR_8BIT      0x46 /* 0x23 << 1 */
-#define BH1750_CMD_POWER_ON   0x01
-#define BH1750_CMD_CONT_H_RES 0x10
+/* Light Sensor (VEML7700) Registers & Address */
+#define VEML7700_ADDR_8BIT        0x20  /* 0x10 << 1 */
+#define VEML7700_REG_ALS_CONF     0x00
+#define VEML7700_REG_ALS_DATA     0x04
+#define VEML7700_ALS_GAIN_1       0x0000  /* Gain x1 */
+#define VEML7700_ALS_IT_100MS     0x0000  /* Integration time 100ms */
+#define VEML7700_ALS_SD_ON        0x0000  /* Power on (SD=0) */
 
 /* Data Structures */
 typedef struct {

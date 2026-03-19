@@ -47,49 +47,72 @@ uint16_t VL53L0X_ReadDistance(I2C_HandleTypeDef *hi2c, uint8_t addr) {
 }
 
 /* ------------------------------------------------------------------------- */
-/* Magnetometer (QMC5883L) Functions                                         */
+/* Magnetometer (MLX90393) Functions                                         */
 /* ------------------------------------------------------------------------- */
 
 void Mag_Init(I2C_HandleTypeDef *hi2c) {
-    /* Initialize QMC5883L */
-    /* Set Mode to Continuous, ODR to 50Hz, RNG to 8G, OSR to 512 */
-    uint8_t ctrl1 = 0x1D; 
-    HAL_I2C_Mem_Write(hi2c, QMC5883L_ADDR_8BIT, QMC5883L_REG_CTRL1, I2C_MEMADD_SIZE_8BIT, &ctrl1, 1, HAL_MAX_DELAY);
+    uint8_t cmd;
+    uint8_t status;
+
+    /* Reset the MLX90393 */
+    cmd = MLX90393_CMD_RT;
+    HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, HAL_MAX_DELAY);
+    HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, HAL_MAX_DELAY);
+    osDelay(2);
+
+    /* Exit any current mode */
+    cmd = MLX90393_CMD_EX;
+    HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, HAL_MAX_DELAY);
+    HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, HAL_MAX_DELAY);
 }
 
 MagData_t Mag_Read(I2C_HandleTypeDef *hi2c) {
     MagData_t mag_data = {0, 0, 0};
-    uint8_t data[6];
+    uint8_t cmd;
+    uint8_t status;
+    uint8_t buf[7]; /* status + X(2) + Y(2) + Z(2) */
 
-    if (HAL_I2C_Mem_Read(hi2c, QMC5883L_ADDR_8BIT, QMC5883L_REG_OUT_X_L, I2C_MEMADD_SIZE_8BIT, data, 6, HAL_MAX_DELAY) == HAL_OK) {
-        mag_data.x = (int16_t)((data[1] << 8) | data[0]);
-        mag_data.y = (int16_t)((data[3] << 8) | data[2]);
-        mag_data.z = (int16_t)((data[5] << 8) | data[4]);
+    /* Start single measurement for XYZ */
+    cmd = MLX90393_CMD_SM_XYZ;
+    HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, HAL_MAX_DELAY);
+    HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, HAL_MAX_DELAY);
+
+    /* Wait for conversion */
+    osDelay(20);
+
+    /* Read measurement */
+    cmd = MLX90393_CMD_RM_XYZ;
+    HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, HAL_MAX_DELAY);
+    if (HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, buf, 7, HAL_MAX_DELAY) == HAL_OK) {
+        /* buf[0]=status, buf[1..6]=X_H,X_L,Y_H,Y_L,Z_H,Z_L (big-endian) */
+        mag_data.x = (int16_t)((buf[1] << 8) | buf[2]);
+        mag_data.y = (int16_t)((buf[3] << 8) | buf[4]);
+        mag_data.z = (int16_t)((buf[5] << 8) | buf[6]);
     }
 
     return mag_data;
 }
 
 /* ------------------------------------------------------------------------- */
-/* Light Sensor (BH1750) Functions                                           */
+/* Light Sensor (VEML7700) Functions                                         */
 /* ------------------------------------------------------------------------- */
 
 void LightSensor_Init(I2C_HandleTypeDef *hi2c) {
-    /* Initialize BH1750 */
-    uint8_t cmd = BH1750_CMD_POWER_ON;
-    HAL_I2C_Master_Transmit(hi2c, BH1750_ADDR_8BIT, &cmd, 1, HAL_MAX_DELAY);
-    osDelay(10);
-    cmd = BH1750_CMD_CONT_H_RES;
-    HAL_I2C_Master_Transmit(hi2c, BH1750_ADDR_8BIT, &cmd, 1, HAL_MAX_DELAY);
+    /* Configure: Gain x1, Integration Time 100ms, Power on */
+    uint8_t config[2] = {0x00, 0x00}; /* little-endian: low byte first */
+    HAL_I2C_Mem_Write(hi2c, VEML7700_ADDR_8BIT, VEML7700_REG_ALS_CONF,
+                      I2C_MEMADD_SIZE_8BIT, config, 2, HAL_MAX_DELAY);
+    osDelay(5);
 }
 
 uint16_t LightSensor_Read(I2C_HandleTypeDef *hi2c) {
     uint8_t data[2];
     uint16_t lux = 0;
 
-    if (HAL_I2C_Master_Receive(hi2c, BH1750_ADDR_8BIT, data, 2, HAL_MAX_DELAY) == HAL_OK) {
-        lux = (data[0] << 8) | data[1];
-        lux = lux / 1.2; /* Convert to lux according to datasheet */
+    if (HAL_I2C_Mem_Read(hi2c, VEML7700_ADDR_8BIT, VEML7700_REG_ALS_DATA,
+                         I2C_MEMADD_SIZE_8BIT, data, 2, HAL_MAX_DELAY) == HAL_OK) {
+        uint16_t raw = (data[1] << 8) | data[0]; /* little-endian */
+        lux = (uint16_t)(raw * 0.0576f);
     }
 
     return lux;

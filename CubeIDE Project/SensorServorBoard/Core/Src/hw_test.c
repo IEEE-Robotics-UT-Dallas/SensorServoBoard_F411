@@ -178,14 +178,14 @@ static void test_tof_sensors(void)
 /* ---- Magnetometer Test ---- */
 static void test_magnetometer(void)
 {
-    uart_printf("\r\n--- Magnetometer Test (QMC5883L on I2C3) ---\r\n");
+    uart_printf("\r\n--- Magnetometer Test (MLX90393 on I2C3) ---\r\n");
 
     /* Check if device responds */
-    if (HAL_I2C_IsDeviceReady(&hi2c3, QMC5883L_ADDR_8BIT, 3, 50) != HAL_OK) {
-        uart_printf("  [FAIL] QMC5883L not found at 0x%02X\r\n", QMC5883L_ADDR_8BIT >> 1);
+    if (HAL_I2C_IsDeviceReady(&hi2c3, MLX90393_ADDR_8BIT, 3, 50) != HAL_OK) {
+        uart_printf("  [FAIL] MLX90393 not found at 0x%02X\r\n", MLX90393_ADDR_8BIT >> 1);
         return;
     }
-    uart_printf("  [OK] QMC5883L found at 0x%02X\r\n", QMC5883L_ADDR_8BIT >> 1);
+    uart_printf("  [OK] MLX90393 found at 0x%02X\r\n", MLX90393_ADDR_8BIT >> 1);
 
     Mag_Init(&hi2c3);
     osDelay(50);
@@ -201,13 +201,13 @@ static void test_magnetometer(void)
 /* ---- Light Sensor Test ---- */
 static void test_light_sensor(void)
 {
-    uart_printf("\r\n--- Light Sensor Test (BH1750 on I2C3) ---\r\n");
+    uart_printf("\r\n--- Light Sensor Test (VEML7700 on I2C3) ---\r\n");
 
-    if (HAL_I2C_IsDeviceReady(&hi2c3, BH1750_ADDR_8BIT, 3, 50) != HAL_OK) {
-        uart_printf("  [FAIL] BH1750 not found at 0x%02X\r\n", BH1750_ADDR_8BIT >> 1);
+    if (HAL_I2C_IsDeviceReady(&hi2c3, VEML7700_ADDR_8BIT, 3, 50) != HAL_OK) {
+        uart_printf("  [FAIL] VEML7700 not found at 0x%02X\r\n", VEML7700_ADDR_8BIT >> 1);
         return;
     }
-    uart_printf("  [OK] BH1750 found at 0x%02X\r\n", BH1750_ADDR_8BIT >> 1);
+    uart_printf("  [OK] VEML7700 found at 0x%02X\r\n", VEML7700_ADDR_8BIT >> 1);
 
     LightSensor_Init(&hi2c3);
     osDelay(200);

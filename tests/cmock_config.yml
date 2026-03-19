@@ -1,0 +1,14 @@
+:cmock:
+  :mock_prefix: mock_
+  :mock_path: mocks/
+  :plugins:
+    - :expect
+    - :expect_any_args
+    - :ignore
+    - :ignore_arg
+    - :return_thru_ptr
+    - :callback
+  :treat_externs: :include
+  :unity_helper_path: []
+  :includes:
+    - hal_stubs.h
