@@ -96,27 +96,22 @@ void StartI2C2Task(void *argument) {
 }
 
 void StartI2C3Task(void *argument) {
-    // ToF 5 (and Mag/Light sensor) are on I2C3. 
-    // If ToF 5 is the only ToF on this bus, it can remain at TOF_DEFAULT_ADDR.
-    VL53L0X_Init(&hi2c3, TOF_DEFAULT_ADDR);
-    
+    /* Mag + Light are on I2C3; ToF 5 not connected yet */
     Mag_Init(&hi2c3);
     LightSensor_Init(&hi2c3);
 
     for(;;) {
-        uint16_t d5 = VL53L0X_ReadDistance(&hi2c3, TOF_DEFAULT_ADDR);
         MagData_t mag = Mag_Read(&hi2c3);
         uint16_t lux = LightSensor_Read(&hi2c3);
-        
+
         if (sensor_data_mutex != NULL) {
             osMutexAcquire(sensor_data_mutex, osWaitForever);
-            g_sensor_data.tof_distances[4] = d5;
             g_sensor_data.mag_data = mag;
             g_sensor_data.light_lux = lux;
             osMutexRelease(sensor_data_mutex);
         }
-        
-        osDelay(50); // Run at 20Hz
+
+        osDelay(50);
     }
 }
 

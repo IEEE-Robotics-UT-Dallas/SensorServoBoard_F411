@@ -331,10 +331,10 @@ static void test_light_present(void)
 
 static void test_light_init(void)
 {
-    /* ALS_CONF register: gain=1, IT=100ms, persistence=1, enable */
-    uint8_t conf[3] = {VEML7700_REG_ALS_CONF, 0x00, 0x00};
+    /* ALS_CONF: gain x2 (bit 11), IT=200ms (bits 7:6 = 01), power on */
+    uint8_t conf[3] = {VEML7700_REG_ALS_CONF, 0x40, 0x08};
     HAL_StatusTypeDef res = HAL_I2C_Master_Transmit(&hi2c3, VEML7700_ADDR_8BIT, conf, 3, I2C_TIMEOUT);
-    HAL_Delay(200);
+    HAL_Delay(250);
     ASSERT_EQ("LightSensor_Init I2C OK", res, HAL_OK);
 }
 
@@ -351,10 +351,10 @@ static uint16_t light_read_safe(HAL_StatusTypeDef *out_res)
 static void test_light_read_plausible(void)
 {
     HAL_StatusTypeDef res;
-    uint16_t lux = light_read_safe(&res);
+    uint16_t raw = light_read_safe(&res);
     if (res != HAL_OK) { ASSERT_EQ("Light read I2C", res, HAL_OK); return; }
-    uart_printf("    (lux = %u)\r\n", lux);
-    ASSERT_TRUE("Light reading < 65535 (not saturated)", lux < 65535);
+    uart_printf("    (raw = %u, ~%.1f lux)\r\n", raw, raw * 0.0288f);
+    ASSERT_TRUE("Light reading < 65535 (not saturated)", raw < 65535);
 }
 
 static void test_light_read_stable(void)
@@ -362,7 +362,7 @@ static void test_light_read_stable(void)
     HAL_StatusTypeDef res;
     uint16_t l1 = light_read_safe(&res);
     if (res != HAL_OK) { ASSERT_EQ("Light read1 I2C", res, HAL_OK); return; }
-    HAL_Delay(200);
+    HAL_Delay(250);
     uint16_t l2 = light_read_safe(&res);
     if (res != HAL_OK) { ASSERT_EQ("Light read2 I2C", res, HAL_OK); return; }
     int delta = abs((int)l1 - (int)l2);
