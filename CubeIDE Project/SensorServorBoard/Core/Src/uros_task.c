@@ -3,6 +3,7 @@
 #ifdef MICRO_ROS_ENABLED
 
 #include "shared_data.h"
+#include "double_buffer.h"
 #include "servo_control.h"
 
 #include "stm32f4xx_hal.h"
@@ -82,22 +83,20 @@ static void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     (void)timer;
     (void)last_call_time;
 
-    if (sensor_data_mutex == NULL) return;
-
-    osMutexAcquire(sensor_data_mutex, osWaitForever);
+    const sensor_snapshot_t *snap = DoubleBuffer_GetReadBuffer(&g_sensor_db);
 
     /* Publish magnetometer (with timestamp) */
     sensor_msgs__msg__MagneticField mag_msg;
     memset(&mag_msg, 0, sizeof(mag_msg));
     fill_timestamp(&mag_msg.header.stamp);
-    mag_msg.magnetic_field.x = (double)g_sensor_data.mag_data.x;
-    mag_msg.magnetic_field.y = (double)g_sensor_data.mag_data.y;
-    mag_msg.magnetic_field.z = (double)g_sensor_data.mag_data.z;
+    mag_msg.magnetic_field.x = (double)snap->data.mag_data.x;
+    mag_msg.magnetic_field.y = (double)snap->data.mag_data.y;
+    mag_msg.magnetic_field.z = (double)snap->data.mag_data.z;
     rcl_publish(&mag_pub, &mag_msg, NULL);
 
     /* Aggregated telemetry (Float32MultiArray): [tof×5, mag×3, light×1] */
     static float telem_data[TELEMETRY_SIZE];
-    shared_data_to_telemetry(&g_sensor_data, telem_data, TELEMETRY_SIZE);
+    shared_data_to_telemetry(&snap->data, telem_data, TELEMETRY_SIZE);
 
     std_msgs__msg__Float32MultiArray telem_msg;
     memset(&telem_msg, 0, sizeof(telem_msg));
@@ -106,9 +105,7 @@ static void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     telem_msg.data.capacity = TELEMETRY_SIZE;
     rcl_publish(&telemetry_pub, &telem_msg, NULL);
 
-    osMutexRelease(sensor_data_mutex);
-
-    /* Publish servo positions (outside mutex — servo_angles is local) */
+    /* Publish servo positions (outside read buffer — servo_angles is local) */
     std_msgs__msg__Float32MultiArray servo_msg;
     memset(&servo_msg, 0, sizeof(servo_msg));
     servo_msg.data.data = servo_angles;

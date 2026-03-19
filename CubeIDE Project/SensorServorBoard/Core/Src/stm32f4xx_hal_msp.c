@@ -212,6 +212,39 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef* hi2c)
   {
     __HAL_RCC_I2C3_CLK_ENABLE();
     /* GPIO already configured as AF_OD in MX_GPIO_Init for PA8(SCL)/PB4(SDA) */
+
+    extern DMA_HandleTypeDef hdma_i2c3_rx;
+    extern DMA_HandleTypeDef hdma_i2c3_tx;
+
+    /* I2C3 RX: DMA1 Stream2 Channel3 */
+    hdma_i2c3_rx.Instance                 = DMA1_Stream2;
+    hdma_i2c3_rx.Init.Channel             = DMA_CHANNEL_3;
+    hdma_i2c3_rx.Init.Direction           = DMA_PERIPH_TO_MEMORY;
+    hdma_i2c3_rx.Init.PeriphInc           = DMA_PINC_DISABLE;
+    hdma_i2c3_rx.Init.MemInc              = DMA_MINC_ENABLE;
+    hdma_i2c3_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_i2c3_rx.Init.MemDataAlignment    = DMA_MDATAALIGN_BYTE;
+    hdma_i2c3_rx.Init.Mode                = DMA_NORMAL;
+    hdma_i2c3_rx.Init.Priority            = DMA_PRIORITY_MEDIUM;
+    hdma_i2c3_rx.Init.FIFOMode            = DMA_FIFOMODE_DISABLE;
+    HAL_DMA_Init(&hdma_i2c3_rx);
+    __HAL_LINKDMA(hi2c, hdmarx, hdma_i2c3_rx);
+
+    /* I2C3 TX: DMA1 Stream4 Channel3 */
+    hdma_i2c3_tx.Instance                 = DMA1_Stream4;
+    hdma_i2c3_tx.Init.Channel             = DMA_CHANNEL_3;
+    hdma_i2c3_tx.Init.Direction           = DMA_MEMORY_TO_PERIPH;
+    hdma_i2c3_tx.Init.PeriphInc           = DMA_PINC_DISABLE;
+    hdma_i2c3_tx.Init.MemInc              = DMA_MINC_ENABLE;
+    hdma_i2c3_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_i2c3_tx.Init.MemDataAlignment    = DMA_MDATAALIGN_BYTE;
+    hdma_i2c3_tx.Init.Mode                = DMA_NORMAL;
+    hdma_i2c3_tx.Init.Priority            = DMA_PRIORITY_MEDIUM;
+    hdma_i2c3_tx.Init.FIFOMode            = DMA_FIFOMODE_DISABLE;
+    HAL_DMA_Init(&hdma_i2c3_tx);
+    __HAL_LINKDMA(hi2c, hdmatx, hdma_i2c3_tx);
+
+    /* I2C3 EV/ER interrupts enabled on-demand by HAL DMA functions */
   }
 }
 

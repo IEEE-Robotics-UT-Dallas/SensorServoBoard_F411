@@ -1,0 +1,7 @@
+target_chip = "STM32F411CEUx"
+elf_path = "/home/groovy-byte/SensorServoBoard_F411/CubeIDE Project/SensorServorBoard/Debug/SensorServorBoard.elf"
+source_root = "/home/groovy-byte/SensorServoBoard_F411/CubeIDE Project/SensorServorBoard/Core/Src/"
+svd_cache_dir = "/home/groovy-byte/.cache/stm32-tui-debugger/svd"
+poll_rate_hz = 20
+rtt_enabled = false
+rtt_channel = 0

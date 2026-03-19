@@ -14,8 +14,9 @@ typedef struct {
     uint16_t light_lux;
 } shared_sensor_data_t;
 
-extern shared_sensor_data_t g_sensor_data;
-extern osMutexId_t sensor_data_mutex;
+/* Forward-declare double buffer (defined in double_buffer.h) */
+struct sensor_double_buffer;
+extern struct sensor_double_buffer g_sensor_db;
 
 /* ---- Telemetry index map (Float32MultiArray layout for /telemetry) ---- */
 

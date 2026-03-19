@@ -86,6 +86,15 @@ void __HAL_TIM_SET_COMPARE_func(TIM_HandleTypeDef *htim, uint32_t Channel, uint3
 typedef void* osMutexId_t;
 typedef uint32_t osSemaphoreId_t;
 
+typedef struct {
+    const char *name;
+    uint32_t attr_bits;
+    void *cb_mem;
+    uint32_t cb_size;
+} osSemaphoreAttr_t;
+
+#define osWaitForever 0xFFFFFFFFU
+
 typedef enum {
     osOK = 0
 } osStatus_t;
@@ -93,6 +102,7 @@ typedef enum {
 void osDelay(uint32_t ticks);
 osStatus_t osMutexAcquire(osMutexId_t mutex_id, uint32_t timeout);
 osStatus_t osMutexRelease(osMutexId_t mutex_id);
+uint32_t HAL_GetTick(void);
 
 /* ---- Error handler ---- */
 void Error_Handler(void);

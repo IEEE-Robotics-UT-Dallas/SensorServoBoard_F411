@@ -179,6 +179,30 @@ void TIM4_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+extern DMA_HandleTypeDef hdma_i2c3_rx;
+extern DMA_HandleTypeDef hdma_i2c3_tx;
+extern I2C_HandleTypeDef hi2c3;
+
+void DMA1_Stream2_IRQHandler(void)
+{
+  HAL_DMA_IRQHandler(&hdma_i2c3_rx);
+}
+
+void DMA1_Stream4_IRQHandler(void)
+{
+  HAL_DMA_IRQHandler(&hdma_i2c3_tx);
+}
+
+void I2C3_EV_IRQHandler(void)
+{
+  HAL_I2C_EV_IRQHandler(&hi2c3);
+}
+
+void I2C3_ER_IRQHandler(void)
+{
+  HAL_I2C_ER_IRQHandler(&hi2c3);
+}
+
 void DMA2_Stream2_IRQHandler(void)
 {
   HAL_DMA_IRQHandler(&hdma_usart1_rx);

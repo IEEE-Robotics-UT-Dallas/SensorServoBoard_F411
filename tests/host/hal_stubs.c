@@ -18,8 +18,8 @@ I2C_HandleTypeDef hi2c3;
 
 /* Shared data externs */
 #include "shared_data.h"
-shared_sensor_data_t g_sensor_data;
-osMutexId_t sensor_data_mutex;
+#include "double_buffer.h"
+sensor_double_buffer_t g_sensor_db;
 
 /* ---- Tracking for __HAL_TIM_SET_COMPARE ---- */
 static TIM_HandleTypeDef *last_tim_htim;
@@ -53,6 +53,9 @@ osStatus_t osMutexAcquire(osMutexId_t mutex_id, uint32_t timeout) {
 }
 osStatus_t osMutexRelease(osMutexId_t mutex_id) {
     (void)mutex_id; return osOK;
+}
+uint32_t HAL_GetTick(void) {
+    return 0;
 }
 
 /* ---- HAL TIM stubs ---- */

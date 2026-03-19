@@ -3,11 +3,8 @@
 #include "servo_manager.h"
 #include "sensor_drivers.h"
 #include "shared_data.h"
+#include "double_buffer.h"
 #include "cmsis_os.h" // FreeRTOS API
-
-// Globals to store sensor readings
-shared_sensor_data_t g_sensor_data;
-osMutexId_t sensor_data_mutex;
 
 // Define the GPIO Port and Pins for XSHUT
 #define XSHUT_PORT_1_2 GPIOB
@@ -19,17 +16,6 @@ osMutexId_t sensor_data_mutex;
 #define XSHUT_PIN_TOF4 GPIO_PIN_13
 
 void StartI2C1Task(void *argument) {
-    // Create mutex if not already created
-    if (sensor_data_mutex == NULL) {
-        const osMutexAttr_t mutex_attr = {
-            .name = "sensorDataMutex",
-            .attr_bits = osMutexRecursive,
-            .cb_mem = NULL,
-            .cb_size = 0U
-        };
-        sensor_data_mutex = osMutexNew(&mutex_attr);
-    }
-
     // 1. Reset sensors on I2C1 (Pull XSHUT LOW)
     HAL_GPIO_WritePin(XSHUT_PORT_1_2, XSHUT_PIN_TOF1 | XSHUT_PIN_TOF2, GPIO_PIN_RESET);
     osDelay(10); // Give them time to turn off
@@ -52,12 +38,10 @@ void StartI2C1Task(void *argument) {
         uint16_t d1 = VL53L0X_ReadDistance(&hi2c1, TOF_1_ADDR);
         uint16_t d2 = VL53L0X_ReadDistance(&hi2c1, TOF_2_ADDR);
         
-        if (sensor_data_mutex != NULL) {
-            osMutexAcquire(sensor_data_mutex, osWaitForever);
-            g_sensor_data.tof_distances[0] = d1;
-            g_sensor_data.tof_distances[1] = d2;
-            osMutexRelease(sensor_data_mutex);
-        }
+        sensor_snapshot_t *wb = DoubleBuffer_GetWriteBuffer(&g_sensor_db);
+        wb->data.tof_distances[0] = d1;
+        wb->data.tof_distances[1] = d2;
+        DoubleBuffer_Swap(&g_sensor_db);
         
         osDelay(50); // Run at 20Hz
     }
@@ -84,28 +68,18 @@ void StartI2C2Task(void *argument) {
         uint16_t d3 = VL53L0X_ReadDistance(&hi2c2, TOF_3_ADDR);
         uint16_t d4 = VL53L0X_ReadDistance(&hi2c2, TOF_4_ADDR);
         
-        if (sensor_data_mutex != NULL) {
-            osMutexAcquire(sensor_data_mutex, osWaitForever);
-            g_sensor_data.tof_distances[2] = d3;
-            g_sensor_data.tof_distances[3] = d4;
-            osMutexRelease(sensor_data_mutex);
-        }
+        sensor_snapshot_t *wb = DoubleBuffer_GetWriteBuffer(&g_sensor_db);
+        wb->data.tof_distances[2] = d3;
+        wb->data.tof_distances[3] = d4;
+        DoubleBuffer_Swap(&g_sensor_db);
         
         osDelay(50); // Run at 20Hz
     }
 }
 
 void StartI2C3Task(void *argument) {
-    /* Create mutex if not already created (I2C1 task may be disabled) */
-    if (sensor_data_mutex == NULL) {
-        const osMutexAttr_t mutex_attr = {
-            .name = "sensorDataMutex",
-            .attr_bits = osMutexRecursive,
-            .cb_mem = NULL,
-            .cb_size = 0U
-        };
-        sensor_data_mutex = osMutexNew(&mutex_attr);
-    }
+    /* Initialize double buffer (before any sensor init) */
+    DoubleBuffer_Init(&g_sensor_db);
 
     /* Mag + Light are on I2C3; ToF 5 not connected yet */
     Mag_Init(&hi2c3);
@@ -142,18 +116,16 @@ void StartI2C3Task(void *argument) {
         mag.z = (int16_t)(sz / mag_count);
 
         /* Read light every 20th cycle (~200ms matches integration time) */
-        uint16_t lux = g_sensor_data.light_lux;  /* keep previous */
+        sensor_snapshot_t *wb = DoubleBuffer_GetWriteBuffer(&g_sensor_db);
+        uint16_t lux = wb->data.light_lux;  /* keep previous */
         if (++light_divider >= 20) {
             light_divider = 0;
             lux = LightSensor_Read(&hi2c3);
         }
 
-        if (sensor_data_mutex != NULL) {
-            osMutexAcquire(sensor_data_mutex, osWaitForever);
-            g_sensor_data.mag_data = mag;
-            g_sensor_data.light_lux = lux;
-            osMutexRelease(sensor_data_mutex);
-        }
+        wb->data.mag_data = mag;
+        wb->data.light_lux = lux;
+        DoubleBuffer_Swap(&g_sensor_db);
 
         osDelay(10);  /* ~100Hz read rate (burst mode — no conversion wait) */
     }
