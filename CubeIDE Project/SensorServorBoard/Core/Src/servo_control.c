@@ -10,7 +10,7 @@ extern TIM_HandleTypeDef htim3;
  */
 static float servo_offset[SERVO_COUNT] = {
     135.0f,  /* SERVO_CTRL_1 (PA1) — calibrated */
-      0.0f,  /* SERVO_CTRL_2 (PA2) — uncalibrated */
+     87.0f,  /* SERVO_CTRL_2 (PA2) — calibrated */
       0.0f,  /* SERVO_CTRL_3 (PA3) — uncalibrated */
       0.0f,  /* SERVO_CTRL_4 (PA5) — uncalibrated */
       0.0f   /* SERVO_CTRL_5 (PA6) — uncalibrated */
@@ -35,8 +35,9 @@ void ServoControl_Init(void) {
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1); // SERVO_CTRL_4 (PA5)
     HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); // SERVO_CTRL_5 (PA6)
 
-    /* Boot connected servo to physical 0° (flush) */
+    /* Boot connected servos to physical 0° (flush) */
     ServoControl_SetAngle(SERVO_CTRL_1, 0.0f);
+    ServoControl_SetAngle(SERVO_CTRL_2, 0.0f);
 }
 
 void ServoControl_SetPulse(ServoCtrl_ID_t servo_id, uint16_t pulse_us) {
