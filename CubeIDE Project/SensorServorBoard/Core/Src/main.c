@@ -387,6 +387,15 @@ static void MX_DMA_Init(void)
   HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
 
+#ifndef HW_TEST
+  /* I2C3 Event/Error interrupts — required for DMA completion.
+     Disabled during HW_TEST: polling HAL calls conflict with ISRs. */
+  HAL_NVIC_SetPriority(I2C3_EV_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(I2C3_EV_IRQn);
+  HAL_NVIC_SetPriority(I2C3_ER_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(I2C3_ER_IRQn);
+#endif
+
   /* USART DMA (existing) */
   HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);

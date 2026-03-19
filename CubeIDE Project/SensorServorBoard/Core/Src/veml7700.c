@@ -19,9 +19,7 @@ static float current_resolution = 0.0144f;  /* gain x2, IT=200ms */
 static uint16_t veml7700_read_register(I2C_HandleTypeDef *hi2c, uint8_t reg)
 {
     uint8_t data[2] = {0, 0};
-    if (HAL_I2C_Mem_Read(hi2c, VEML7700_ADDR_8BIT, reg,
-                         I2C_MEMADD_SIZE_8BIT, data, 2, I2C_TIMEOUT) != HAL_OK) {
-        i2c_recover(hi2c);
+    if (i2c3_mem_read_dma(VEML7700_ADDR_8BIT, reg, data, 2) != HAL_OK) {
         return 0;
     }
     return (uint16_t)((data[1] << 8) | data[0]);
@@ -29,29 +27,14 @@ static uint16_t veml7700_read_register(I2C_HandleTypeDef *hi2c, uint8_t reg)
 
 void LightSensor_Init(I2C_HandleTypeDef *hi2c)
 {
-    /*
-     * ALS_CONF register (16-bit, little-endian):
-     *   Bit 0     : ALS_SD     = 0 (power on)
-     *   Bit 1     : ALS_INT_EN = 0 (no interrupt)
-     *   Bits 5:4  : ALS_PERS   = 00 (1 sample)
-     *   Bits 9:6  : ALS_IT     = 0001 (200ms)
-     *   Bits 12:11: ALS_GAIN   = 01 (x2)
-     *
-     * Low byte:  IT[3:0]<<6 | PERS<<4 | INT_EN<<1 | SD
-     *            = (0x01 << 6) | 0 | 0 | 0 = 0x40
-     * High byte: GAIN<<3 = 0x01 << 3 = 0x08
-     */
     uint8_t config[2] = {0x40, 0x08};
-    if (HAL_I2C_Mem_Write(hi2c, VEML7700_ADDR_8BIT, VEML7700_REG_ALS_CONF,
-                          I2C_MEMADD_SIZE_8BIT, config, 2, I2C_TIMEOUT) != HAL_OK) {
+    if (i2c3_mem_write_dma(VEML7700_ADDR_8BIT, VEML7700_REG_ALS_CONF,
+                            config, 2) != HAL_OK) {
         i2c_recover(hi2c);
         return;
     }
 
-    /* Resolution for gain x2, IT=200ms */
     current_resolution = 0.0036f * (800.0f / 200.0f) * (2.0f / 2.0f);
-
-    /* Wait for first integration + startup (Vishay recommends >= IT + 2.5ms) */
     osDelay(250);
 }
 

@@ -1,4 +1,111 @@
 #include "i2c_common.h"
+#include "cmsis_os.h"
+
+/* I2C3 handle (defined in main.c) */
+extern I2C_HandleTypeDef hi2c3;
+
+/* Binary semaphore for I2C3 DMA transfer completion */
+static osSemaphoreId_t i2c3_dma_sem = NULL;
+
+/* Transfer result from ISR callback */
+static volatile HAL_StatusTypeDef i2c3_dma_result;
+
+void i2c3_dma_init(void)
+{
+    const osSemaphoreAttr_t attr = { .name = "i2c3_dma" };
+    i2c3_dma_sem = osSemaphoreNew(1, 0, &attr);  /* starts empty (taken) */
+}
+
+/* HAL callbacks — release semaphore on I2C3 transfer complete/error */
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C3 && i2c3_dma_sem) {
+        i2c3_dma_result = HAL_OK;
+        osSemaphoreRelease(i2c3_dma_sem);
+    }
+}
+
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C3 && i2c3_dma_sem) {
+        i2c3_dma_result = HAL_OK;
+        osSemaphoreRelease(i2c3_dma_sem);
+    }
+}
+
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C3 && i2c3_dma_sem) {
+        i2c3_dma_result = HAL_OK;
+        osSemaphoreRelease(i2c3_dma_sem);
+    }
+}
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C3 && i2c3_dma_sem) {
+        i2c3_dma_result = HAL_OK;
+        osSemaphoreRelease(i2c3_dma_sem);
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C3 && i2c3_dma_sem) {
+        i2c3_dma_result = HAL_ERROR;
+        osSemaphoreRelease(i2c3_dma_sem);
+    }
+}
+
+HAL_StatusTypeDef i2c3_transmit_dma(uint16_t addr, uint8_t *data, uint16_t size)
+{
+    if (!i2c3_dma_sem) return HAL_ERROR;
+    HAL_StatusTypeDef res = HAL_I2C_Master_Transmit_DMA(&hi2c3, addr, data, size);
+    if (res != HAL_OK) { i2c_recover(&hi2c3); return res; }
+    if (osSemaphoreAcquire(i2c3_dma_sem, I2C_TIMEOUT) != osOK) {
+        i2c_recover(&hi2c3); return HAL_TIMEOUT;
+    }
+    return i2c3_dma_result;
+}
+
+HAL_StatusTypeDef i2c3_receive_dma(uint16_t addr, uint8_t *data, uint16_t size)
+{
+    if (!i2c3_dma_sem) return HAL_ERROR;
+    HAL_StatusTypeDef res = HAL_I2C_Master_Receive_DMA(&hi2c3, addr, data, size);
+    if (res != HAL_OK) { i2c_recover(&hi2c3); return res; }
+    if (osSemaphoreAcquire(i2c3_dma_sem, I2C_TIMEOUT) != osOK) {
+        i2c_recover(&hi2c3); return HAL_TIMEOUT;
+    }
+    return i2c3_dma_result;
+}
+
+HAL_StatusTypeDef i2c3_mem_read_dma(uint16_t addr, uint8_t reg,
+                                     uint8_t *data, uint16_t size)
+{
+    if (!i2c3_dma_sem) return HAL_ERROR;
+    HAL_StatusTypeDef res = HAL_I2C_Mem_Read_DMA(&hi2c3, addr, reg,
+                                                  I2C_MEMADD_SIZE_8BIT,
+                                                  data, size);
+    if (res != HAL_OK) { i2c_recover(&hi2c3); return res; }
+    if (osSemaphoreAcquire(i2c3_dma_sem, I2C_TIMEOUT) != osOK) {
+        i2c_recover(&hi2c3); return HAL_TIMEOUT;
+    }
+    return i2c3_dma_result;
+}
+
+HAL_StatusTypeDef i2c3_mem_write_dma(uint16_t addr, uint8_t reg,
+                                      uint8_t *data, uint16_t size)
+{
+    if (!i2c3_dma_sem) return HAL_ERROR;
+    HAL_StatusTypeDef res = HAL_I2C_Mem_Write_DMA(&hi2c3, addr, reg,
+                                                   I2C_MEMADD_SIZE_8BIT,
+                                                   data, size);
+    if (res != HAL_OK) { i2c_recover(&hi2c3); return res; }
+    if (osSemaphoreAcquire(i2c3_dma_sem, I2C_TIMEOUT) != osOK) {
+        i2c_recover(&hi2c3); return HAL_TIMEOUT;
+    }
+    return i2c3_dma_result;
+}
 
 /**
  * @brief  GPIO-level I2C bus recovery for I2C3 (PA8=SCL, PB4=SDA).

@@ -63,11 +63,11 @@ MagData_t Mag_Read(I2C_HandleTypeDef *hi2c)
     uint8_t cmd, buf[7];
 
     cmd = MLX90393_CMD_RM_XYZ;
-    if (HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT) != HAL_OK) {
-        i2c_recover(hi2c); return mag_data;
+    if (i2c3_transmit_dma(MLX90393_ADDR_8BIT, &cmd, 1) != HAL_OK) {
+        return mag_data;
     }
-    if (HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, buf, 7, I2C_TIMEOUT) != HAL_OK) {
-        i2c_recover(hi2c); return mag_data;
+    if (i2c3_receive_dma(MLX90393_ADDR_8BIT, buf, 7) != HAL_OK) {
+        return mag_data;
     }
 
     mag_data.x = (int16_t)((buf[1] << 8) | buf[2]);

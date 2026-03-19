@@ -4,7 +4,8 @@
 #include "sensor_drivers.h"
 #include "shared_data.h"
 #include "double_buffer.h"
-#include "cmsis_os.h" // FreeRTOS API
+#include "i2c_common.h"
+#include "cmsis_os.h"
 
 // Define the GPIO Port and Pins for XSHUT
 #define XSHUT_PORT_1_2 GPIOB
@@ -78,6 +79,9 @@ void StartI2C2Task(void *argument) {
 }
 
 void StartI2C3Task(void *argument) {
+    /* Initialize DMA synchronization semaphore */
+    i2c3_dma_init();
+
     /* Initialize double buffer (before any sensor init) */
     DoubleBuffer_Init(&g_sensor_db);
 
