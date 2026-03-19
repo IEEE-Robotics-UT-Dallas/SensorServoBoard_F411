@@ -21,8 +21,11 @@ extern I2C_HandleTypeDef hi2c3;
 #define MLX90393_ADDR_8BIT    0x18  /* 0x0C << 1 */
 #define MLX90393_CMD_RT       0xF0  /* Reset */
 #define MLX90393_CMD_EX       0x80  /* Exit mode */
+#define MLX90393_CMD_SB_XYZ   0x1E  /* Start burst measurement XYZ */
 #define MLX90393_CMD_SM_XYZ   0x3E  /* Start single measurement XYZ */
 #define MLX90393_CMD_RM_XYZ   0x4E  /* Read measurement XYZ */
+#define MLX90393_CMD_WR       0x60  /* Write register */
+#define MLX90393_CMD_RR       0x50  /* Read register */
 
 /* Light Sensor (VEML7700) Registers & Address */
 #define VEML7700_ADDR_8BIT        0x20  /* 0x10 << 1 */

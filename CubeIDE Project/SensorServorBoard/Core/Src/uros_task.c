@@ -19,7 +19,6 @@
 #include <rmw_microros/time_sync.h>
 #include <rosidl_runtime_c/string_functions.h>
 #include <sensor_msgs/msg/magnetic_field.h>
-#include <std_msgs/msg/float32.h>
 #include <std_msgs/msg/float32_multi_array.h>
 
 #include "uros_transport.h"
@@ -32,12 +31,10 @@ void * microros_zero_allocate(size_t number_of_elements, size_t size_of_element,
 
 extern UART_HandleTypeDef huart6;
 
-/* Publishers */
-static rcl_publisher_t tof_pub;        /* /tof — 5-element float array (meters) */
-static rcl_publisher_t mag_pub;        /* /imu/mag */
-static rcl_publisher_t light_pub;      /* /light */
-static rcl_publisher_t telemetry_pub;  /* /telemetry */
-static rcl_publisher_t servo_pos_pub;  /* /servo_pos — 5-element float array (degrees) */
+/* Publishers (3 total) */
+static rcl_publisher_t mag_pub;        /* /imu/mag — MagneticField with timestamp */
+static rcl_publisher_t telemetry_pub;  /* /telemetry — [tof×5, mag×3, light×1] */
+static rcl_publisher_t servo_pos_pub;  /* /servo_pos — 5 servo angles (degrees) */
 
 /* Subscriptions */
 static rcl_subscription_t servo_cmd_sub;
@@ -89,18 +86,6 @@ static void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 
     osMutexAcquire(sensor_data_mutex, osWaitForever);
 
-    /* Publish ToF distances as single 5-element array (meters) */
-    static float tof_data[5];
-    for (int i = 0; i < 5; i++)
-        tof_data[i] = (float)g_sensor_data.tof_distances[i] / 1000.0f;
-
-    std_msgs__msg__Float32MultiArray tof_msg;
-    memset(&tof_msg, 0, sizeof(tof_msg));
-    tof_msg.data.data = tof_data;
-    tof_msg.data.size = 5;
-    tof_msg.data.capacity = 5;
-    rcl_publish(&tof_pub, &tof_msg, NULL);
-
     /* Publish magnetometer (with timestamp) */
     sensor_msgs__msg__MagneticField mag_msg;
     memset(&mag_msg, 0, sizeof(mag_msg));
@@ -110,13 +95,7 @@ static void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     mag_msg.magnetic_field.z = (double)g_sensor_data.mag_data.z;
     rcl_publish(&mag_pub, &mag_msg, NULL);
 
-    /* Publish light level */
-    std_msgs__msg__Float32 light_msg;
-    memset(&light_msg, 0, sizeof(light_msg));
-    light_msg.data = (float)g_sensor_data.light_lux;
-    rcl_publish(&light_pub, &light_msg, NULL);
-
-    /* Aggregated telemetry (Float32MultiArray) */
+    /* Aggregated telemetry (Float32MultiArray): [tof×5, mag×3, light×1] */
     static float telem_data[TELEMETRY_SIZE];
     shared_data_to_telemetry(&g_sensor_data, telem_data, TELEMETRY_SIZE);
 
@@ -197,15 +176,7 @@ void StartuROSTask(void *argument)
         osDelay(200);
     }
 
-    /* Create ToF distances publisher (5-element float array, meters) */
-    rclc_publisher_init_default(
-        &tof_pub,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
-        "tof"
-    );
-
-    /* Create magnetometer publisher */
+    /* Create magnetometer publisher (timestamped) */
     rclc_publisher_init_default(
         &mag_pub,
         &node,
@@ -213,15 +184,7 @@ void StartuROSTask(void *argument)
         "imu/mag"
     );
 
-    /* Create light sensor publisher */
-    rclc_publisher_init_default(
-        &light_pub,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-        "light"
-    );
-
-    /* Create aggregated telemetry publisher */
+    /* Create telemetry publisher [tof×5, mag×3, light×1] */
     rclc_publisher_init_default(
         &telemetry_pub,
         &node,
@@ -245,11 +208,11 @@ void StartuROSTask(void *argument)
         "servo_cmd"
     );
 
-    /* Create sensor publishing timer at 20 Hz */
+    /* Create sensor publishing timer at 50 Hz */
     rclc_timer_init_default2(
         &sensor_timer,
         &support,
-        RCL_MS_TO_NS(50),
+        RCL_MS_TO_NS(20),
         sensor_timer_callback,
         true
     );

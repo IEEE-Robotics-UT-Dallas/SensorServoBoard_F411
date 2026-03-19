@@ -119,7 +119,7 @@ void StartI2C3Task(void *argument) {
     uint8_t mag_idx = 0;
     uint8_t mag_count = 0;  /* ramp up until buffer full */
 
-    uint8_t light_divider = 0;  /* read light every 4th cycle (200ms) */
+    uint8_t light_divider = 0;  /* read light every 20th cycle (~200ms at 10ms loop) */
 
     for(;;) {
         MagData_t raw = Mag_Read(&hi2c3);
@@ -141,9 +141,9 @@ void StartI2C3Task(void *argument) {
         mag.y = (int16_t)(sy / mag_count);
         mag.z = (int16_t)(sz / mag_count);
 
-        /* Read light every 4th cycle (~200ms matches integration time) */
+        /* Read light every 20th cycle (~200ms matches integration time) */
         uint16_t lux = g_sensor_data.light_lux;  /* keep previous */
-        if (++light_divider >= 4) {
+        if (++light_divider >= 20) {
             light_divider = 0;
             lux = LightSensor_Read(&hi2c3);
         }
@@ -155,7 +155,7 @@ void StartI2C3Task(void *argument) {
             osMutexRelease(sensor_data_mutex);
         }
 
-        osDelay(50);
+        osDelay(10);  /* ~100Hz read rate (burst mode — no conversion wait) */
     }
 }
 

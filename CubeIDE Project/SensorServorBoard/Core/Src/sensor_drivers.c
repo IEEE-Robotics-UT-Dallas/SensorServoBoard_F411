@@ -77,6 +77,20 @@ uint16_t VL53L0X_ReadDistance(I2C_HandleTypeDef *hi2c, uint8_t addr)
 
 /* ── Magnetometer (MLX90393) ───────────────────────────────────────────── */
 
+/* Write a 16-bit register: [WR, data_hi, data_lo, addr<<2] → 1 status byte */
+static HAL_StatusTypeDef mlx_write_reg(I2C_HandleTypeDef *hi2c, uint8_t reg, uint16_t val)
+{
+    uint8_t buf[4] = { MLX90393_CMD_WR, (uint8_t)(val >> 8), (uint8_t)val, (uint8_t)(reg << 2) };
+    uint8_t status;
+    if (HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, buf, 4, I2C_TIMEOUT) != HAL_OK) {
+        i2c_recover(hi2c); return HAL_ERROR;
+    }
+    if (HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT) != HAL_OK) {
+        i2c_recover(hi2c); return HAL_ERROR;
+    }
+    return HAL_OK;
+}
+
 void Mag_Init(I2C_HandleTypeDef *hi2c)
 {
     uint8_t cmd, status;
@@ -89,26 +103,54 @@ void Mag_Init(I2C_HandleTypeDef *hi2c)
     if (HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT) != HAL_OK) {
         i2c_recover(hi2c); return;
     }
-    osDelay(50);  /* MLX90393 needs time after reset */
+    osDelay(50);
+
+    /* Exit any active mode */
+    cmd = MLX90393_CMD_EX;
+    if (HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT) != HAL_OK) {
+        i2c_recover(hi2c); return;
+    }
+    HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT);
+    osDelay(5);
+
+    /*
+     * Register 2 (0x02): OSR + DIG_FILT + RES
+     *   OSR=0 (fastest), DIG_FILT=2 (light filtering), RES=0 (default)
+     *   Bits [1:0] = OSR = 00
+     *   Bits [4:2] = DIG_FILT = 010
+     *   → conversion time ~5ms per XYZ → ~200Hz capable
+     *   Value: 0x0008 (DIG_FILT=2, OSR=0)
+     */
+    mlx_write_reg(hi2c, 0x02, 0x0008);
+    osDelay(2);
+
+    /*
+     * Register 1 (0x01): BURST_DATA_RATE + BURST_SEL
+     *   BURST_SEL[3:0] = 0xE (XYZ enabled, no T)
+     *   BURST_DATA_RATE[5:0] = 0 (no extra delay between bursts)
+     *   TRIG_INT_SEL = 0, COMM_MODE = 00 (I2C)
+     *   Value: 0x00E0  (BURST_SEL=0xE in bits [9:6])
+     */
+    mlx_write_reg(hi2c, 0x01, 0x03C0);
+    osDelay(2);
+
+    /* Start burst mode — sensor now converts continuously */
+    cmd = MLX90393_CMD_SB_XYZ;
+    if (HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT) != HAL_OK) {
+        i2c_recover(hi2c); return;
+    }
+    if (HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT) != HAL_OK) {
+        i2c_recover(hi2c); return;
+    }
+    osDelay(10);  /* let first conversion complete */
 }
 
 MagData_t Mag_Read(I2C_HandleTypeDef *hi2c)
 {
     MagData_t mag_data = {0, 0, 0};
-    uint8_t cmd, status, buf[7];
+    uint8_t cmd, buf[7];
 
-    /* Start single measurement XYZ */
-    cmd = MLX90393_CMD_SM_XYZ;
-    if (HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT) != HAL_OK) {
-        i2c_recover(hi2c); return mag_data;
-    }
-    if (HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT) != HAL_OK) {
-        i2c_recover(hi2c); return mag_data;
-    }
-
-    osDelay(50);  /* conversion time */
-
-    /* Read measurement */
+    /* In burst mode, just read the latest measurement */
     cmd = MLX90393_CMD_RM_XYZ;
     if (HAL_I2C_Master_Transmit(hi2c, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT) != HAL_OK) {
         i2c_recover(hi2c); return mag_data;
