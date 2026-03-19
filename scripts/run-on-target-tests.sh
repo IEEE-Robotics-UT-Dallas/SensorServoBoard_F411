@@ -142,15 +142,16 @@ if $DO_FLASH; then
     CAT_PID=$!
     sleep 0.5
 
-    # Reset the board via OpenOCD to start tests
-    echo "  Resetting board..."
-    openocd -f "$SCRIPT_DIR/openocd.cfg" \
-        -c "init; reset run; shutdown" > /dev/null 2>&1 || true
-    echo "  Waiting for test output..."
-
     # Tail the log so user sees output in real time
     tail -f "$LOGFILE" 2>/dev/null &
     TAIL_PID=$!
+
+    # Reset the board via NVIC system reset (AIRCR register)
+    # This is the only reliable reset method for this board (no SRST wire)
+    echo "  Resetting board (NVIC AIRCR)..."
+    openocd -f "$SCRIPT_DIR/openocd.cfg" \
+        -c "init; halt; mww 0xE000ED0C 0x05FA0004; shutdown" > /dev/null 2>&1 || true
+    echo "  Waiting for test output..."
 
     # Wait for test completion or timeout
     WAITED=0
