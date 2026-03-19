@@ -23,18 +23,18 @@
 #include <math.h>
 #include <stdlib.h>
 
-extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart6;
 extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern I2C_HandleTypeDef hi2c3;
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 
-/* ── UART Output ───────────────────────────────────────────────── */
+/* ── UART Output (USART6 on PA11/PA12 via USB-C) ──────────────── */
 
 static void uart_print(const char *str)
 {
-    HAL_UART_Transmit(&huart1, (uint8_t *)str, strlen(str), 100);
+    HAL_UART_Transmit(&huart6, (uint8_t *)str, strlen(str), 100);
 }
 
 static void uart_printf(const char *fmt, ...)
@@ -144,15 +144,15 @@ static void test_freertos_tick(void)
 
 static void test_uart_initialized(void)
 {
-    ASSERT_TRUE("UART1 state ready", huart1.gState == HAL_UART_STATE_READY);
+    ASSERT_TRUE("USART6 state ready", huart6.gState == HAL_UART_STATE_READY);
 }
 
 static void test_uart_tx(void)
 {
     uint8_t data[] = "UART_TX_OK";
-    HAL_StatusTypeDef res = HAL_UART_Transmit(&huart1, data, sizeof(data) - 1, 100);
+    HAL_StatusTypeDef res = HAL_UART_Transmit(&huart6, data, sizeof(data) - 1, 100);
     uart_print("\r\n");
-    ASSERT_EQ("UART TX returns HAL_OK", res, HAL_OK);
+    ASSERT_EQ("USART6 TX returns HAL_OK", res, HAL_OK);
 }
 
 /* ── I2C Bus Tests ─────────────────────────────────────────────── */
