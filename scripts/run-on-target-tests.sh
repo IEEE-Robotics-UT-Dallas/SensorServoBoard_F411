@@ -79,8 +79,10 @@ sed -i 's/value="MICRO_ROS_ENABLED"/value="__DISABLED_MICRO_ROS_ENABLED__"/g' "$
 sed -i 's/value="RMW_UXRCE_TRANSPORT_CUSTOM"/value="HW_TEST"/g' "$CPROJECT"
 
 # ── Build ────────────────────────────────────────────────────────
-echo "  Building..."
+echo "  Cleaning & building..."
 rm -rf /tmp/sensorservo_headless_ws
+rm -f "$PROJECT_PATH/Debug/Core/Src/hw_test.o" "$PROJECT_PATH/Debug/Core/Src/hw_test.d"
+rm -f "$PROJECT_PATH/Debug/Core/Src/main.o" "$PROJECT_PATH/Debug/Core/Src/main.d"
 cd "$PROJECT_ROOT"
 if bash build.sh > /tmp/ssb-test-build.log 2>&1; then
     echo -e "  ${GREEN}✓${RESET} Build succeeded"
@@ -138,7 +140,7 @@ if $DO_FLASH; then
     # Start background serial capture
     LOGFILE="/tmp/ssb-test-output.log"
     > "$LOGFILE"
-    timeout 35 cat "$SERIAL" >> "$LOGFILE" 2>/dev/null &
+    timeout 95 cat "$SERIAL" >> "$LOGFILE" 2>/dev/null &
     CAT_PID=$!
     sleep 0.5
 
@@ -147,15 +149,14 @@ if $DO_FLASH; then
     TAIL_PID=$!
 
     # Reset the board via NVIC system reset (AIRCR register)
-    # This is the only reliable reset method for this board (no SRST wire)
     echo "  Resetting board (NVIC AIRCR)..."
     openocd -f "$SCRIPT_DIR/openocd.cfg" \
-        -c "init; halt; mww 0xE000ED0C 0x05FA0004; shutdown" > /dev/null 2>&1 || true
+        -c "init; mww 0xE000ED0C 0x05FA0004; exit" > /dev/null 2>&1 || true
     echo "  Waiting for test output..."
 
     # Wait for test completion or timeout
     WAITED=0
-    while [ $WAITED -lt 30 ]; do
+    while [ $WAITED -lt 90 ]; do
         sleep 1
         WAITED=$((WAITED + 1))
         if grep -q "tests complete" "$LOGFILE" 2>/dev/null; then

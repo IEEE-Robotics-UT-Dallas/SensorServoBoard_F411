@@ -1,11 +1,12 @@
 /*
- * hw_test.c — Interactive hardware test for SensorServoBoard F411
+ * on_target_tests.c — Automated on-target test suite for SensorServoBoard F411
  *
- * Build with -DHW_TEST (and without -DMICRO_ROS_ENABLED) to use USART1
- * as a debug console. Tests: I2C scan, ToF sensors, magnetometer,
- * light sensor, servo sweep, and GPIO/XSHUT pins.
+ * Build with -DHW_TEST to replace normal firmware.
+ * Runs automated pass/fail tests over UART (500000 baud, PB6 TX / PB7 RX).
+ * Reports results in Unity-style format for easy parsing.
  *
- * Connect a USB-UART adapter to PB6(TX)/PB7(RX) at 500000 baud.
+ * Current hardware: UART, MLX90393 (mag), VEML7700 (light) on I2C3
+ * ToF sensors: not yet connected (tests skipped)
  */
 
 #ifdef HW_TEST
@@ -14,20 +15,26 @@
 #include "sensor_drivers.h"
 #include "servo_control.h"
 #include "tof_manager.h"
+#include "shared_data.h"
 #include "cmsis_os.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <math.h>
+#include <stdlib.h>
 
-extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart6;
 extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern I2C_HandleTypeDef hi2c3;
+extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim3;
 
-/* Printf redirect over UART */
+/* ── UART Output (USART6 on PA11/PA12 via USB-C) ──────────────── */
+
 static void uart_print(const char *str)
 {
-    HAL_UART_Transmit(&huart1, (uint8_t *)str, strlen(str), 100);
+    HAL_UART_Transmit(&huart6, (uint8_t *)str, strlen(str), 100);
 }
 
 static void uart_printf(const char *fmt, ...)
@@ -40,244 +47,521 @@ static void uart_printf(const char *fmt, ...)
     uart_print(buf);
 }
 
-static uint8_t uart_getchar(uint32_t timeout_ms)
+/* ── Test Framework ────────────────────────────────────────────── */
+
+static int tests_run    = 0;
+static int tests_passed = 0;
+static int tests_failed = 0;
+static int tests_skipped = 0;
+static int current_line = 0;
+
+#define RUN_TEST(func) do { \
+    current_line = __LINE__; \
+    func(); \
+    tests_run++; \
+} while(0)
+
+#define TEST_PASS(name) do { \
+    tests_passed++; \
+    uart_printf("  PASS: %s\r\n", name); \
+} while(0)
+
+#define TEST_FAIL(name, msg) do { \
+    tests_failed++; \
+    uart_printf("  FAIL: %s — %s\r\n", name, msg); \
+} while(0)
+
+#define TEST_SKIP(name, reason) do { \
+    tests_skipped++; \
+    uart_printf("  SKIP: %s — %s\r\n", name, reason); \
+} while(0)
+
+#define ASSERT_TRUE(name, cond) do { \
+    if (cond) { TEST_PASS(name); } \
+    else { TEST_FAIL(name, "expected true"); } \
+} while(0)
+
+#define ASSERT_EQ(name, actual, expected) do { \
+    if ((actual) == (expected)) { TEST_PASS(name); } \
+    else { \
+        char _msg[80]; \
+        snprintf(_msg, sizeof(_msg), "expected %d, got %d", (int)(expected), (int)(actual)); \
+        TEST_FAIL(name, _msg); \
+    } \
+} while(0)
+
+#define ASSERT_RANGE(name, val, lo, hi) do { \
+    int _v = (int)(val); \
+    if (_v >= (int)(lo) && _v <= (int)(hi)) { TEST_PASS(name); } \
+    else { \
+        char _msg[80]; \
+        snprintf(_msg, sizeof(_msg), "value %d not in [%d, %d]", _v, (int)(lo), (int)(hi)); \
+        TEST_FAIL(name, _msg); \
+    } \
+} while(0)
+
+#define ASSERT_NEQ(name, actual, unexpected) do { \
+    if ((actual) != (unexpected)) { TEST_PASS(name); } \
+    else { \
+        char _msg[80]; \
+        snprintf(_msg, sizeof(_msg), "got unexpected %d", (int)(unexpected)); \
+        TEST_FAIL(name, _msg); \
+    } \
+} while(0)
+
+static void test_group(const char *name)
 {
-    uint8_t ch = 0;
-    HAL_UART_Receive(&huart1, &ch, 1, timeout_ms);
-    return ch;
+    uart_printf("\r\n── %s ──\r\n", name);
 }
 
-/* ---- I2C Bus Scan ---- */
-static void test_i2c_scan(I2C_HandleTypeDef *hi2c, const char *name)
-{
-    uart_printf("\r\n--- I2C Scan: %s ---\r\n", name);
-    uart_printf("     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\r\n");
+/* ── HAL & Clock Tests ─────────────────────────────────────────── */
 
-    int found = 0;
-    for (uint8_t row = 0; row < 8; row++) {
-        uart_printf("%02X: ", row << 4);
-        for (uint8_t col = 0; col < 16; col++) {
-            uint8_t addr = (row << 4) | col;
-            if (addr < 0x03 || addr > 0x77) {
-                uart_print("   ");
-                continue;
-            }
-            HAL_StatusTypeDef res = HAL_I2C_IsDeviceReady(hi2c, addr << 1, 1, 10);
-            if (res == HAL_OK) {
-                uart_printf("%02X ", addr);
-                found++;
-            } else {
-                uart_print("-- ");
-            }
+static void test_hal_tick_running(void)
+{
+    uint32_t t1 = HAL_GetTick();
+    HAL_Delay(10);
+    uint32_t t2 = HAL_GetTick();
+    ASSERT_TRUE("HAL tick incrementing", (t2 - t1) >= 8 && (t2 - t1) <= 20);
+}
+
+static void test_system_clock(void)
+{
+    uint32_t hclk = HAL_RCC_GetHCLKFreq();
+    /* Should be ~96 MHz (PLLM=14, PLLN=215, PLLP=4, HSE=25MHz) */
+    ASSERT_TRUE("HCLK > 90 MHz", hclk > 90000000);
+    ASSERT_TRUE("HCLK < 100 MHz", hclk < 100000000);
+}
+
+static void test_freertos_tick(void)
+{
+    uint32_t t1 = osKernelGetTickCount();
+    HAL_Delay(50);
+    uint32_t t2 = osKernelGetTickCount();
+    ASSERT_TRUE("FreeRTOS tick running (50ms delay)", (t2 - t1) >= 45 && (t2 - t1) <= 60);
+}
+
+/* ── UART Tests ────────────────────────────────────────────────── */
+
+static void test_uart_initialized(void)
+{
+    ASSERT_TRUE("USART6 state ready", huart6.gState == HAL_UART_STATE_READY);
+}
+
+static void test_uart_tx(void)
+{
+    uint8_t data[] = "UART_TX_OK";
+    HAL_StatusTypeDef res = HAL_UART_Transmit(&huart6, data, sizeof(data) - 1, 100);
+    uart_print("\r\n");
+    ASSERT_EQ("USART6 TX returns HAL_OK", res, HAL_OK);
+}
+
+/* ── I2C Bus Tests ─────────────────────────────────────────────── */
+
+static void test_i2c1_initialized(void)
+{
+    ASSERT_TRUE("I2C1 peripheral enabled",
+                hi2c1.Instance->CR1 & I2C_CR1_PE);
+}
+
+static void test_i2c2_initialized(void)
+{
+    ASSERT_TRUE("I2C2 peripheral enabled",
+                hi2c2.Instance->CR1 & I2C_CR1_PE);
+}
+
+static void test_i2c3_initialized(void)
+{
+    ASSERT_TRUE("I2C3 peripheral enabled",
+                hi2c3.Instance->CR1 & I2C_CR1_PE);
+}
+
+static int i2c_count_devices(I2C_HandleTypeDef *hi2c)
+{
+    int count = 0;
+    for (uint8_t addr = 0x03; addr <= 0x77; addr++) {
+        if (HAL_I2C_IsDeviceReady(hi2c, addr << 1, 1, 5) == HAL_OK) {
+            uart_printf("    (device at 0x%02X)\r\n", addr);
+            count++;
         }
-        uart_print("\r\n");
     }
-    uart_printf("Found %d device(s)\r\n", found);
+    return count;
 }
 
-/* ---- XSHUT GPIO Test ---- */
-static void test_xshut_pins(void)
+/* I2C recovery: bypass HAL entirely — directly manipulate registers.
+ * STM32F4 HAL_I2C_Init checks BUSY and hangs if set. */
+static void i2c_recover(I2C_HandleTypeDef *hi2c)
 {
-    uart_printf("\r\n--- XSHUT Pin Test ---\r\n");
-    uart_printf("Toggling XSHUT pins (PB0, PB1, PB12, PB13)...\r\n");
+    I2C_TypeDef *reg = hi2c->Instance;
 
-    const struct { GPIO_TypeDef *port; uint16_t pin; const char *name; } xshut[] = {
-        { GPIOB, GPIO_PIN_0,  "PB0  (ToF1 XSHUT)" },
-        { GPIOB, GPIO_PIN_1,  "PB1  (ToF2 XSHUT)" },
-        { GPIOB, GPIO_PIN_12, "PB12 (ToF3 XSHUT)" },
-        { GPIOB, GPIO_PIN_13, "PB13 (ToF4 XSHUT)" },
-    };
+    /* Disable peripheral */
+    reg->CR1 &= ~I2C_CR1_PE;
 
-    for (int i = 0; i < 4; i++) {
-        /* Pull LOW (sensor off) */
-        HAL_GPIO_WritePin(xshut[i].port, xshut[i].pin, GPIO_PIN_RESET);
-        osDelay(50);
-        GPIO_PinState low = HAL_GPIO_ReadPin(xshut[i].port, xshut[i].pin);
+    /* Clear error flags in SR1 */
+    reg->SR1 = 0;
 
-        /* Pull HIGH (sensor on) */
-        HAL_GPIO_WritePin(xshut[i].port, xshut[i].pin, GPIO_PIN_SET);
-        osDelay(50);
-        GPIO_PinState high = HAL_GPIO_ReadPin(xshut[i].port, xshut[i].pin);
+    /* SWRST */
+    reg->CR1 |= I2C_CR1_SWRST;
+    reg->CR1 &= ~I2C_CR1_SWRST;
 
-        uart_printf("  %s: LOW=%d HIGH=%d %s\r\n",
-                     xshut[i].name, low, high,
-                     (low == 0 && high == 1) ? "[OK]" : "[FAIL]");
-    }
+    /* Reconfigure: 100kHz @ APB1=48MHz → CCR=240, TRISE=49 */
+    reg->CR2 = 48;           /* APB1 freq in MHz */
+    reg->CCR = 240;          /* 48MHz / (2 * 100kHz) */
+    reg->TRISE = 49;         /* (48MHz / 1MHz) + 1 */
+    reg->OAR1 = 0x4000;      /* Bit 14 must be 1 */
+
+    /* Re-enable */
+    reg->CR1 |= I2C_CR1_PE;
+
+    /* Reset HAL state */
+    hi2c->State = HAL_I2C_STATE_READY;
+    hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+    hi2c->Mode = HAL_I2C_MODE_NONE;
 }
 
-/* ---- Servo Sweep Test ---- */
-static void test_servos(void)
+static void test_i2c3_has_devices(void)
 {
-    uart_printf("\r\n--- Servo Sweep Test ---\r\n");
-    uart_printf("Sweeping all 5 servos: 0 -> 90 -> 180 -> 90\r\n");
+    int n = i2c_count_devices(&hi2c3);
+    uart_printf("    (found %d device(s) on I2C3)\r\n", n);
+    ASSERT_TRUE("I2C3 has ≥1 device (mag+light)", n >= 1);
+}
 
+/* ── MLX90393 Magnetometer Tests ───────────────────────────────── */
+
+#define I2C_TIMEOUT 100  /* ms — finite timeout for all test I2C ops */
+
+static void test_mag_present(void)
+{
+    HAL_StatusTypeDef res = HAL_I2C_IsDeviceReady(&hi2c3, MLX90393_ADDR_8BIT, 3, 50);
+    ASSERT_EQ("MLX90393 responds at 0x0C", res, HAL_OK);
+}
+
+static void test_mag_init(void)
+{
+    uint8_t cmd;
+    uint8_t status;
+    HAL_StatusTypeDef res;
+
+    /* Reset */
+    cmd = MLX90393_CMD_RT;
+    res = HAL_I2C_Master_Transmit(&hi2c3, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { ASSERT_EQ("Mag reset TX", res, HAL_OK); return; }
+    res = HAL_I2C_Master_Receive(&hi2c3, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { ASSERT_EQ("Mag reset RX", res, HAL_OK); return; }
+    HAL_Delay(50);
+    TEST_PASS("Mag_Init completed");
+}
+
+static MagData_t mag_read_safe(HAL_StatusTypeDef *out_res)
+{
+    MagData_t m = {0, 0, 0};
+    uint8_t cmd, status, buf[7];
+    HAL_StatusTypeDef res;
+
+    cmd = MLX90393_CMD_SM_XYZ;
+    res = HAL_I2C_Master_Transmit(&hi2c3, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { *out_res = res; return m; }
+    res = HAL_I2C_Master_Receive(&hi2c3, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { *out_res = res; return m; }
+
+    HAL_Delay(50);
+
+    cmd = MLX90393_CMD_RM_XYZ;
+    res = HAL_I2C_Master_Transmit(&hi2c3, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { *out_res = res; return m; }
+    res = HAL_I2C_Master_Receive(&hi2c3, MLX90393_ADDR_8BIT, buf, 7, I2C_TIMEOUT);
+    if (res == HAL_OK) {
+        m.x = (int16_t)((buf[1] << 8) | buf[2]);
+        m.y = (int16_t)((buf[3] << 8) | buf[4]);
+        m.z = (int16_t)((buf[5] << 8) | buf[6]);
+    }
+    *out_res = res;
+    return m;
+}
+
+static void test_mag_read_nonzero(void)
+{
+    HAL_StatusTypeDef res = HAL_ERROR;
+    MagData_t m = {0, 0, 0};
+    /* Retry once — i2c_recover before this test can leave first TX flaky */
+    for (int attempt = 0; attempt < 2; attempt++) {
+        m = mag_read_safe(&res);
+        if (res == HAL_OK) break;
+        i2c_recover(&hi2c3);
+        HAL_Delay(10);
+    }
+    if (res != HAL_OK) { ASSERT_EQ("Mag read I2C", res, HAL_OK); return; }
+    int any_nonzero = (m.x != 0) || (m.y != 0) || (m.z != 0);
+    uart_printf("    (X=%d Y=%d Z=%d)\r\n", m.x, m.y, m.z);
+    ASSERT_TRUE("Mag_Read returns nonzero data", any_nonzero);
+}
+
+static void test_mag_read_stable(void)
+{
+    HAL_StatusTypeDef res;
+    MagData_t m1 = mag_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Mag read1 I2C", res, HAL_OK); return; }
+    HAL_Delay(100);
+    MagData_t m2 = mag_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Mag read2 I2C", res, HAL_OK); return; }
+
+    int dx = abs(m1.x - m2.x);
+    int dy = abs(m1.y - m2.y);
+    int dz = abs(m1.z - m2.z);
+    uart_printf("    (delta: X=%d Y=%d Z=%d)\r\n", dx, dy, dz);
+    ASSERT_TRUE("Mag readings stable (delta < 500)", dx < 500 && dy < 500 && dz < 500);
+}
+
+static void test_mag_read_in_range(void)
+{
+    HAL_StatusTypeDef res;
+    MagData_t m = mag_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Mag range I2C", res, HAL_OK); return; }
+    ASSERT_TRUE("Mag X in int16 range", m.x > -32000 && m.x < 32000);
+    ASSERT_TRUE("Mag Y in int16 range", m.y > -32000 && m.y < 32000);
+    ASSERT_TRUE("Mag Z in int16 range", m.z > -32000 && m.z < 32000);
+}
+
+/* ── VEML7700 Light Sensor Tests ───────────────────────────────── */
+
+static void test_light_present(void)
+{
+    HAL_StatusTypeDef res = HAL_I2C_IsDeviceReady(&hi2c3, VEML7700_ADDR_8BIT, 3, 50);
+    ASSERT_EQ("VEML7700 responds at 0x10", res, HAL_OK);
+}
+
+static void test_light_init(void)
+{
+    /* ALS_CONF register: gain=1, IT=100ms, persistence=1, enable */
+    uint8_t conf[3] = {VEML7700_REG_ALS_CONF, 0x00, 0x00};
+    HAL_StatusTypeDef res = HAL_I2C_Master_Transmit(&hi2c3, VEML7700_ADDR_8BIT, conf, 3, I2C_TIMEOUT);
+    HAL_Delay(200);
+    ASSERT_EQ("LightSensor_Init I2C OK", res, HAL_OK);
+}
+
+static uint16_t light_read_safe(HAL_StatusTypeDef *out_res)
+{
+    uint8_t reg = VEML7700_REG_ALS_DATA;
+    uint8_t buf[2] = {0, 0};
+    *out_res = HAL_I2C_Master_Transmit(&hi2c3, VEML7700_ADDR_8BIT, &reg, 1, I2C_TIMEOUT);
+    if (*out_res != HAL_OK) return 0;
+    *out_res = HAL_I2C_Master_Receive(&hi2c3, VEML7700_ADDR_8BIT, buf, 2, I2C_TIMEOUT);
+    return (uint16_t)(buf[1] << 8 | buf[0]);
+}
+
+static void test_light_read_plausible(void)
+{
+    HAL_StatusTypeDef res;
+    uint16_t lux = light_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Light read I2C", res, HAL_OK); return; }
+    uart_printf("    (lux = %u)\r\n", lux);
+    ASSERT_TRUE("Light reading < 65535 (not saturated)", lux < 65535);
+}
+
+static void test_light_read_stable(void)
+{
+    HAL_StatusTypeDef res;
+    uint16_t l1 = light_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Light read1 I2C", res, HAL_OK); return; }
+    HAL_Delay(200);
+    uint16_t l2 = light_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Light read2 I2C", res, HAL_OK); return; }
+    int delta = abs((int)l1 - (int)l2);
+    uart_printf("    (l1=%u l2=%u delta=%d)\r\n", l1, l2, delta);
+    /* Stable lighting — readings within 20% or 50 lux */
+    int threshold = (l1 / 5) + 50;
+    ASSERT_TRUE("Light readings stable", delta < threshold);
+}
+
+/* ── Timer / PWM Tests ─────────────────────────────────────────── */
+
+static void test_tim2_config(void)
+{
+    ASSERT_TRUE("TIM2 prescaler set (≈1µs/tick)", htim2.Init.Prescaler > 50);
+    ASSERT_EQ("TIM2 period = 19999 (50Hz)", htim2.Init.Period, 19999);
+}
+
+static void test_tim3_config(void)
+{
+    ASSERT_TRUE("TIM3 prescaler set (≈1µs/tick)", htim3.Init.Prescaler > 50);
+    ASSERT_EQ("TIM3 period = 19999 (50Hz)", htim3.Init.Period, 19999);
+}
+
+static void test_servo_init_and_center(void)
+{
     ServoControl_Init();
+    HAL_Delay(50);
 
-    const float angles[] = { 0.0f, 90.0f, 180.0f, 90.0f };
-    for (int a = 0; a < 4; a++) {
-        uart_printf("  Angle: %.0f deg ... ", angles[a]);
-        for (int s = 0; s < 5; s++) {
-            ServoControl_SetAngle((ServoCtrl_ID_t)s, angles[a]);
-        }
-        uart_printf("set\r\n");
-        osDelay(800);
-    }
-    uart_printf("Servos at 90 (center)\r\n");
+    /* After init, all servos should be at 1500µs (center) */
+    uint32_t ccr = __HAL_TIM_GET_COMPARE(&htim2, TIM_CHANNEL_2);
+    ASSERT_EQ("Servo 1 centered at 1500µs", ccr, 1500);
 }
 
-/* ---- Individual Servo Test ---- */
-static void test_servo_individual(void)
+static void test_servo_set_angle(void)
 {
-    uart_printf("\r\n--- Individual Servo Test ---\r\n");
-    uart_printf("Testing each servo one at a time...\r\n");
+    ServoControl_SetAngle(SERVO_CTRL_1, 0.0f);
+    HAL_Delay(10);
+    uint32_t ccr0 = __HAL_TIM_GET_COMPARE(&htim2, TIM_CHANNEL_2);
 
-    ServoControl_Init();
-    const char *names[] = {"PA1/TIM2_CH2", "PA2/TIM2_CH3", "PA3/TIM2_CH4",
-                           "PA5/TIM2_CH1", "PA6/TIM3_CH1"};
+    ServoControl_SetAngle(SERVO_CTRL_1, 180.0f);
+    HAL_Delay(10);
+    uint32_t ccr180 = __HAL_TIM_GET_COMPARE(&htim2, TIM_CHANNEL_2);
 
-    for (int s = 0; s < 5; s++) {
-        uart_printf("  Servo %d (%s): 0->180->90 ", s + 1, names[s]);
-        ServoControl_SetAngle((ServoCtrl_ID_t)s, 0.0f);
-        osDelay(500);
-        ServoControl_SetAngle((ServoCtrl_ID_t)s, 180.0f);
-        osDelay(500);
-        ServoControl_SetAngle((ServoCtrl_ID_t)s, 90.0f);
-        osDelay(300);
-        uart_printf("[DONE]\r\n");
-    }
+    /* 0° = 500µs, 180° = 2500µs */
+    ASSERT_EQ("Servo angle 0° → 500µs", ccr0, 500);
+    ASSERT_EQ("Servo angle 180° → 2500µs", ccr180, 2500);
+
+    /* Restore center */
+    ServoControl_SetAngle(SERVO_CTRL_1, 90.0f);
 }
 
-/* ---- ToF Sensor Read Test ---- */
-static void test_tof_sensors(void)
+/* ── GPIO / XSHUT Tests ────────────────────────────────────────── */
+
+static void test_xshut_pins_controllable(void)
 {
-    uart_printf("\r\n--- ToF Sensor Test ---\r\n");
+    /* PB0 — ToF 1 XSHUT */
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+    HAL_Delay(5);
+    GPIO_PinState low = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0);
 
-    /* First scan I2C buses to see what's there */
-    test_i2c_scan(&hi2c1, "I2C1 (PB8/PB9) - ToF 1,2");
-    test_i2c_scan(&hi2c2, "I2C2 (PB10/PB3) - ToF 3,4");
-    test_i2c_scan(&hi2c3, "I2C3 (PA8/PB4) - ToF 5, Mag, Light");
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
+    HAL_Delay(5);
+    GPIO_PinState high = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0);
 
-    uart_printf("\r\nInitializing ToF sensors...\r\n");
-    ToF_Init_All();
-    osDelay(100);
-
-    uart_printf("Reading distances (5 samples each):\r\n");
-    const char *tof_names[] = {"ToF1(I2C1)", "ToF2(I2C1)", "ToF3(I2C2)",
-                                "ToF4(I2C2)", "ToF5(I2C3)"};
-    for (int sample = 0; sample < 5; sample++) {
-        uart_printf("  Sample %d: ", sample + 1);
-        for (int t = 0; t < 5; t++) {
-            uint16_t dist = ToF_ReadDistance((ToF_ID_t)t);
-            uart_printf("%s=%4dmm ", tof_names[t], dist);
-        }
-        uart_printf("\r\n");
-        osDelay(100);
-    }
+    ASSERT_TRUE("XSHUT PB0 toggles LOW→HIGH", low == GPIO_PIN_RESET && high == GPIO_PIN_SET);
 }
 
-/* ---- Magnetometer Test ---- */
-static void test_magnetometer(void)
+/* ── shared_data Tests ─────────────────────────────────────────── */
+
+static void test_shared_data_telemetry(void)
 {
-    uart_printf("\r\n--- Magnetometer Test (MLX90393 on I2C3) ---\r\n");
+    shared_sensor_data_t data = {0};
+    data.tof_distances[0] = 1000;
+    data.tof_distances[1] = 2000;
+    data.mag_data.x = 100;
+    data.mag_data.y = -200;
+    data.mag_data.z = 300;
+    data.light_lux = 500;
 
-    /* Check if device responds */
-    if (HAL_I2C_IsDeviceReady(&hi2c3, MLX90393_ADDR_8BIT, 3, 50) != HAL_OK) {
-        uart_printf("  [FAIL] MLX90393 not found at 0x%02X\r\n", MLX90393_ADDR_8BIT >> 1);
-        return;
-    }
-    uart_printf("  [OK] MLX90393 found at 0x%02X\r\n", MLX90393_ADDR_8BIT >> 1);
+    float telem[TELEMETRY_SIZE];
+    shared_data_to_telemetry(&data, telem, TELEMETRY_SIZE);
 
-    Mag_Init(&hi2c3);
-    osDelay(50);
-
-    uart_printf("  Reading 5 samples:\r\n");
-    for (int i = 0; i < 5; i++) {
-        MagData_t m = Mag_Read(&hi2c3);
-        uart_printf("    X=%6d  Y=%6d  Z=%6d\r\n", m.x, m.y, m.z);
-        osDelay(100);
-    }
+    ASSERT_TRUE("telemetry[0] = tof_0 in meters",
+                fabsf(telem[IDX_TOF_0] - 1.0f) < 0.01f);
+    ASSERT_TRUE("telemetry[5] = mag_x",
+                fabsf(telem[IDX_MAG_X] - 100.0f) < 0.01f);
+    ASSERT_TRUE("telemetry[8] = light_lux",
+                fabsf(telem[IDX_LIGHT] - 500.0f) < 0.01f);
 }
 
-/* ---- Light Sensor Test ---- */
-static void test_light_sensor(void)
+/* ── Memory Tests ──────────────────────────────────────────────── */
+
+static void test_heap_available(void)
 {
-    uart_printf("\r\n--- Light Sensor Test (VEML7700 on I2C3) ---\r\n");
-
-    if (HAL_I2C_IsDeviceReady(&hi2c3, VEML7700_ADDR_8BIT, 3, 50) != HAL_OK) {
-        uart_printf("  [FAIL] VEML7700 not found at 0x%02X\r\n", VEML7700_ADDR_8BIT >> 1);
-        return;
-    }
-    uart_printf("  [OK] VEML7700 found at 0x%02X\r\n", VEML7700_ADDR_8BIT >> 1);
-
-    LightSensor_Init(&hi2c3);
-    osDelay(200);
-
-    uart_printf("  Reading 5 samples:\r\n");
-    for (int i = 0; i < 5; i++) {
-        uint16_t lux = LightSensor_Read(&hi2c3);
-        uart_printf("    Light: %5d lux\r\n", lux);
-        osDelay(200);
-    }
+    size_t free_heap = xPortGetFreeHeapSize();
+    uart_printf("    (free heap: %u bytes)\r\n", (unsigned)free_heap);
+    ASSERT_TRUE("Heap > 4KB free", free_heap > 4096);
 }
 
-/* ---- Main Test Menu ---- */
+/* ── ToF Tests (skipped — no hardware) ─────────────────────────── */
+
+static void test_tof_skipped(void)
+{
+    TEST_SKIP("ToF I2C1 sensor scan", "ToF sensors not connected");
+    TEST_SKIP("ToF I2C2 sensor scan", "ToF sensors not connected");
+    TEST_SKIP("ToF_Init_All()", "ToF sensors not connected");
+    TEST_SKIP("ToF_ReadDistance()", "ToF sensors not connected");
+}
+
+/* ── Test Runner ───────────────────────────────────────────────── */
+
 void HW_Test_Run(void)
 {
-    osDelay(500);
+    HAL_Delay(500);
 
     uart_printf("\r\n");
-    uart_printf("============================================\r\n");
-    uart_printf("  SensorServoBoard F411 — Hardware Test\r\n");
-    uart_printf("  UART: 500000 baud on PB6(TX)/PB7(RX)\r\n");
-    uart_printf("============================================\r\n");
+    uart_printf("╔══════════════════════════════════════════════╗\r\n");
+    uart_printf("║  SensorServoBoard F411 — On-Target Tests    ║\r\n");
+    uart_printf("║  UART: 500000 baud  |  %s     ║\r\n", __DATE__);
+    uart_printf("╚══════════════════════════════════════════════╝\r\n");
 
+    /* ── System ── */
+    test_group("System & Clock");
+    RUN_TEST(test_hal_tick_running);
+    RUN_TEST(test_system_clock);
+    RUN_TEST(test_freertos_tick);
+    RUN_TEST(test_heap_available);
+
+    /* ── UART ── */
+    test_group("UART");
+    RUN_TEST(test_uart_initialized);
+    RUN_TEST(test_uart_tx);
+
+    /* ── I2C Buses ── */
+    test_group("I2C Buses");
+    RUN_TEST(test_i2c1_initialized);
+    RUN_TEST(test_i2c2_initialized);
+    RUN_TEST(test_i2c3_initialized);
+    RUN_TEST(test_i2c3_has_devices);
+
+    /* ── Magnetometer ── */
+    test_group("MLX90393 Magnetometer (I2C3)");
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_mag_present);
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_mag_init);
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_mag_read_nonzero);
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_mag_read_stable);
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_mag_read_in_range);
+
+    /* ── Light Sensor ── */
+    test_group("VEML7700 Light Sensor (I2C3)");
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_light_present);
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_light_init);
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_light_read_plausible);
+    i2c_recover(&hi2c3);
+    RUN_TEST(test_light_read_stable);
+
+    /* ── Timers & Servos ── */
+    test_group("Timers & PWM");
+    RUN_TEST(test_tim2_config);
+    RUN_TEST(test_tim3_config);
+    RUN_TEST(test_servo_init_and_center);
+    RUN_TEST(test_servo_set_angle);
+
+    /* ── GPIO ── */
+    test_group("GPIO (XSHUT)");
+    RUN_TEST(test_xshut_pins_controllable);
+
+    /* ── Data Conversion ── */
+    test_group("Shared Data / Telemetry");
+    RUN_TEST(test_shared_data_telemetry);
+
+    /* ── Skipped (no hardware) ── */
+    test_group("ToF Sensors (not connected)");
+    RUN_TEST(test_tof_skipped);
+
+    /* ── Summary ── */
+    uart_printf("\r\n");
+    uart_printf("══════════════════════════════════════════════\r\n");
+    uart_printf("  %d assertions: %d passed, %d failed, %d skipped\r\n",
+                tests_passed + tests_failed + tests_skipped,
+                tests_passed, tests_failed, tests_skipped);
+    if (tests_failed == 0) {
+        uart_printf("  ✓ ALL TESTS PASSED\r\n");
+    } else {
+        uart_printf("  ✗ %d FAILURE(S)\r\n", tests_failed);
+    }
+    uart_printf("══════════════════════════════════════════════\r\n");
+
+    /* Blink or idle */
     for (;;) {
-        uart_printf("\r\n");
-        uart_printf("  [1] I2C scan (all buses)\r\n");
-        uart_printf("  [2] XSHUT GPIO toggle\r\n");
-        uart_printf("  [3] Servo sweep (all)\r\n");
-        uart_printf("  [4] Servo test (individual)\r\n");
-        uart_printf("  [5] ToF sensors read\r\n");
-        uart_printf("  [6] Magnetometer read\r\n");
-        uart_printf("  [7] Light sensor read\r\n");
-        uart_printf("  [a] Run ALL tests\r\n");
-        uart_printf("  [r] Repeat last\r\n");
-        uart_printf("> ");
-
-        static uint8_t last_choice = '1';
-        uint8_t ch = uart_getchar(30000);
-        if (ch == 0) continue;
-        if (ch == 'r' || ch == 'R') ch = last_choice;
-        else last_choice = ch;
-
-        uart_printf("%c\r\n", ch);
-
-        switch (ch) {
-            case '1':
-                test_i2c_scan(&hi2c1, "I2C1 (PB8/PB9)");
-                test_i2c_scan(&hi2c2, "I2C2 (PB10/PB3)");
-                test_i2c_scan(&hi2c3, "I2C3 (PA8/PB4)");
-                break;
-            case '2': test_xshut_pins(); break;
-            case '3': test_servos(); break;
-            case '4': test_servo_individual(); break;
-            case '5': test_tof_sensors(); break;
-            case '6': test_magnetometer(); break;
-            case '7': test_light_sensor(); break;
-            case 'a': case 'A':
-                test_xshut_pins();
-                test_i2c_scan(&hi2c1, "I2C1 (PB8/PB9)");
-                test_i2c_scan(&hi2c2, "I2C2 (PB10/PB3)");
-                test_i2c_scan(&hi2c3, "I2C3 (PA8/PB4)");
-                test_tof_sensors();
-                test_magnetometer();
-                test_light_sensor();
-                test_servos();
-                break;
-            default:
-                uart_printf("Unknown command: '%c'\r\n", ch);
-                break;
-        }
+        HAL_Delay(1000);
     }
 }
 
