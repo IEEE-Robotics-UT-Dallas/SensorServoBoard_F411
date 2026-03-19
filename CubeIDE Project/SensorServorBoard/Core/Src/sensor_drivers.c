@@ -89,7 +89,7 @@ void Mag_Init(I2C_HandleTypeDef *hi2c)
     if (HAL_I2C_Master_Receive(hi2c, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT) != HAL_OK) {
         i2c_recover(hi2c); return;
     }
-    HAL_Delay(50);  /* MLX90393 needs time after reset */
+    osDelay(50);  /* MLX90393 needs time after reset */
 }
 
 MagData_t Mag_Read(I2C_HandleTypeDef *hi2c)
@@ -106,7 +106,7 @@ MagData_t Mag_Read(I2C_HandleTypeDef *hi2c)
         i2c_recover(hi2c); return mag_data;
     }
 
-    HAL_Delay(50);  /* conversion time */
+    osDelay(50);  /* conversion time */
 
     /* Read measurement */
     cmd = MLX90393_CMD_RM_XYZ;
@@ -134,7 +134,7 @@ void LightSensor_Init(I2C_HandleTypeDef *hi2c)
         i2c_recover(hi2c);
         return;
     }
-    HAL_Delay(250);  /* wait for first integration cycle */
+    osDelay(250);  /* wait for first integration cycle */
 }
 
 uint16_t LightSensor_Read(I2C_HandleTypeDef *hi2c)

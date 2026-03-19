@@ -150,10 +150,22 @@ void StartuROSTask(void *argument)
     rclc_support_t support;
     rcl_allocator_t allocator;
     rcl_node_t node;
+    rcl_ret_t rc;
 
     allocator = rcl_get_default_allocator();
-    rclc_support_init(&support, 0, NULL, &allocator);
-    rclc_node_init_default(&node, "sensor_servo_board", "", &support);
+
+    rc = rclc_support_init(&support, 0, NULL, &allocator);
+    if (rc != RCL_RET_OK)
+    {
+        /* Transport or session failure — retry after delay */
+        for (;;) { osDelay(1000); }
+    }
+
+    rc = rclc_node_init_default(&node, "sensor_servo_board", "", &support);
+    if (rc != RCL_RET_OK)
+    {
+        for (;;) { osDelay(1000); }
+    }
 
     /* Create ToF distances publisher (5-element float array, meters) */
     rclc_publisher_init_default(
