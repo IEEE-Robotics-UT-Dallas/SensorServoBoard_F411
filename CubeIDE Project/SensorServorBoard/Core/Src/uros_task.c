@@ -16,6 +16,7 @@
 #include <uxr/client/transport.h>
 #include <rmw_microxrcedds_c/config.h>
 #include <rmw_microros/rmw_microros.h>
+#include <rmw_microros/time_sync.h>
 #include <rosidl_runtime_c/string_functions.h>
 #include <sensor_msgs/msg/magnetic_field.h>
 #include <std_msgs/msg/float32.h>
@@ -43,6 +44,23 @@ static rcl_subscription_t servo_cmd_sub;
 
 /* Timers */
 static rcl_timer_t sensor_timer;
+
+/* Time sync state */
+static volatile bool time_synced = false;
+
+static void fill_timestamp(builtin_interfaces__msg__Time *stamp)
+{
+    if (time_synced) {
+        int64_t ns = rmw_uros_epoch_nanos();
+        stamp->sec  = (int32_t)(ns / 1000000000LL);
+        stamp->nanosec = (uint32_t)(ns % 1000000000LL);
+    } else {
+        /* Fallback: FreeRTOS tick (ms since boot) */
+        uint32_t ms = HAL_GetTick();
+        stamp->sec  = (int32_t)(ms / 1000);
+        stamp->nanosec = (ms % 1000) * 1000000U;
+    }
+}
 
 /* Servo command subscriber callback */
 static float servo_angles[5] = {90.0f, 90.0f, 90.0f, 90.0f, 90.0f};
@@ -83,9 +101,10 @@ static void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     tof_msg.data.capacity = 5;
     rcl_publish(&tof_pub, &tof_msg, NULL);
 
-    /* Publish magnetometer */
+    /* Publish magnetometer (with timestamp) */
     sensor_msgs__msg__MagneticField mag_msg;
     memset(&mag_msg, 0, sizeof(mag_msg));
+    fill_timestamp(&mag_msg.header.stamp);
     mag_msg.magnetic_field.x = (double)g_sensor_data.mag_data.x;
     mag_msg.magnetic_field.y = (double)g_sensor_data.mag_data.y;
     mag_msg.magnetic_field.z = (double)g_sensor_data.mag_data.z;
@@ -165,6 +184,17 @@ void StartuROSTask(void *argument)
     if (rc != RCL_RET_OK)
     {
         for (;;) { osDelay(1000); }
+    }
+
+    /* Synchronize clock with agent (NTP-like, 3 attempts) */
+    for (int i = 0; i < 3; i++)
+    {
+        if (rmw_uros_sync_session(500) == RMW_RET_OK)
+        {
+            time_synced = true;
+            break;
+        }
+        osDelay(200);
     }
 
     /* Create ToF distances publisher (5-element float array, meters) */

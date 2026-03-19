@@ -111,9 +111,42 @@ void StartI2C3Task(void *argument) {
     Mag_Init(&hi2c3);
     LightSensor_Init(&hi2c3);
 
+    /* Moving average buffers for magnetometer (4 samples) */
+    #define MAG_AVG_N 4
+    int16_t mag_x_buf[MAG_AVG_N] = {0};
+    int16_t mag_y_buf[MAG_AVG_N] = {0};
+    int16_t mag_z_buf[MAG_AVG_N] = {0};
+    uint8_t mag_idx = 0;
+    uint8_t mag_count = 0;  /* ramp up until buffer full */
+
+    uint8_t light_divider = 0;  /* read light every 4th cycle (200ms) */
+
     for(;;) {
-        MagData_t mag = Mag_Read(&hi2c3);
-        uint16_t lux = LightSensor_Read(&hi2c3);
+        MagData_t raw = Mag_Read(&hi2c3);
+
+        /* Store into ring buffer */
+        mag_x_buf[mag_idx] = raw.x;
+        mag_y_buf[mag_idx] = raw.y;
+        mag_z_buf[mag_idx] = raw.z;
+        mag_idx = (mag_idx + 1) % MAG_AVG_N;
+        if (mag_count < MAG_AVG_N) mag_count++;
+
+        /* Compute average */
+        int32_t sx = 0, sy = 0, sz = 0;
+        for (uint8_t i = 0; i < mag_count; i++) {
+            sx += mag_x_buf[i]; sy += mag_y_buf[i]; sz += mag_z_buf[i];
+        }
+        MagData_t mag;
+        mag.x = (int16_t)(sx / mag_count);
+        mag.y = (int16_t)(sy / mag_count);
+        mag.z = (int16_t)(sz / mag_count);
+
+        /* Read light every 4th cycle (~200ms matches integration time) */
+        uint16_t lux = g_sensor_data.light_lux;  /* keep previous */
+        if (++light_divider >= 4) {
+            light_divider = 0;
+            lux = LightSensor_Read(&hi2c3);
+        }
 
         if (sensor_data_mutex != NULL) {
             osMutexAcquire(sensor_data_mutex, osWaitForever);
