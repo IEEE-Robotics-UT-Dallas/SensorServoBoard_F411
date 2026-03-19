@@ -21,6 +21,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <math.h>
+#include <stdlib.h>
 
 extern UART_HandleTypeDef huart1;
 extern I2C_HandleTypeDef hi2c1;
@@ -52,7 +53,6 @@ static int tests_run    = 0;
 static int tests_passed = 0;
 static int tests_failed = 0;
 static int tests_skipped = 0;
-static const char *current_file = __FILE__;
 static int current_line = 0;
 
 #define RUN_TEST(func) do { \
