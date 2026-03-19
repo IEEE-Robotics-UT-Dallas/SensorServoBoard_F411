@@ -185,6 +185,15 @@ static int i2c_count_devices(I2C_HandleTypeDef *hi2c)
     return count;
 }
 
+/* Reset I2C peripheral to clear bus errors (BERR, ARLO, AF, etc.) */
+static void i2c_reset(I2C_HandleTypeDef *hi2c)
+{
+    HAL_I2C_DeInit(hi2c);
+    osDelay(10);
+    HAL_I2C_Init(hi2c);
+    osDelay(10);
+}
+
 static void test_i2c3_has_devices(void)
 {
     int n = i2c_count_devices(&hi2c3);
@@ -406,6 +415,7 @@ void HW_Test_Run(void)
 
     /* ── Magnetometer ── */
     test_group("MLX90393 Magnetometer (I2C3)");
+    i2c_reset(&hi2c3);
     RUN_TEST(test_mag_present);
     RUN_TEST(test_mag_init);
     RUN_TEST(test_mag_read_nonzero);
@@ -414,6 +424,7 @@ void HW_Test_Run(void)
 
     /* ── Light Sensor ── */
     test_group("VEML7700 Light Sensor (I2C3)");
+    i2c_reset(&hi2c3);
     RUN_TEST(test_light_present);
     RUN_TEST(test_light_init);
     RUN_TEST(test_light_read_plausible);

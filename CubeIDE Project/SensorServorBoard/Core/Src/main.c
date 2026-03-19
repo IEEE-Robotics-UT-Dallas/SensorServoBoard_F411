@@ -157,6 +157,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+#ifndef HW_TEST
   const osThreadAttr_t i2c1Task_attributes = {
     .name = "i2c1Task",
     .stack_size = 192 * 4,
@@ -177,6 +178,7 @@ int main(void)
     .priority = (osPriority_t) osPriorityNormal,
   };
   osThreadNew(StartI2C3Task, NULL, &i2c3Task_attributes);
+#endif
 
 #ifdef MICRO_ROS_ENABLED
   const osThreadAttr_t uROSTask_attributes = {
