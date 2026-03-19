@@ -17,7 +17,6 @@
 #include <rmw_microxrcedds_c/config.h>
 #include <rmw_microros/rmw_microros.h>
 #include <rosidl_runtime_c/string_functions.h>
-#include <sensor_msgs/msg/range.h>
 #include <sensor_msgs/msg/magnetic_field.h>
 #include <std_msgs/msg/float32.h>
 #include <std_msgs/msg/float32_multi_array.h>
@@ -33,10 +32,11 @@ void * microros_zero_allocate(size_t number_of_elements, size_t size_of_element,
 extern UART_HandleTypeDef huart6;
 
 /* Publishers */
-static rcl_publisher_t tof_pub[5];
-static rcl_publisher_t mag_pub;
-static rcl_publisher_t light_pub;
-static rcl_publisher_t telemetry_pub;
+static rcl_publisher_t tof_pub;        /* /tof — 5-element float array (meters) */
+static rcl_publisher_t mag_pub;        /* /imu/mag */
+static rcl_publisher_t light_pub;      /* /light */
+static rcl_publisher_t telemetry_pub;  /* /telemetry */
+static rcl_publisher_t servo_pos_pub;  /* /servo_pos — 5-element float array (degrees) */
 
 /* Subscriptions */
 static rcl_subscription_t servo_cmd_sub;
@@ -45,6 +45,8 @@ static rcl_subscription_t servo_cmd_sub;
 static rcl_timer_t sensor_timer;
 
 /* Servo command subscriber callback */
+static float servo_angles[5] = {90.0f, 90.0f, 90.0f, 90.0f, 90.0f};
+
 static void servo_cmd_callback(const void * msgin)
 {
     const std_msgs__msg__Float32MultiArray * msg =
@@ -54,7 +56,8 @@ static void servo_cmd_callback(const void * msgin)
 
     for (int i = 0; i < 5; i++)
     {
-        ServoControl_SetAngle((ServoCtrl_ID_t)i, msg->data.data[i]);
+        servo_angles[i] = msg->data.data[i];
+        ServoControl_SetAngle((ServoCtrl_ID_t)i, servo_angles[i]);
     }
 }
 
@@ -68,18 +71,17 @@ static void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 
     osMutexAcquire(sensor_data_mutex, osWaitForever);
 
-    /* Publish 5 ToF range messages */
+    /* Publish ToF distances as single 5-element array (meters) */
+    static float tof_data[5];
     for (int i = 0; i < 5; i++)
-    {
-        sensor_msgs__msg__Range tof_msg;
-        memset(&tof_msg, 0, sizeof(tof_msg));
-        tof_msg.radiation_type = sensor_msgs__msg__Range__INFRARED;
-        tof_msg.field_of_view = 0.471f;  /* ~27 deg for VL53L0X */
-        tof_msg.min_range = 0.03f;
-        tof_msg.max_range = 2.0f;
-        tof_msg.range = (float)g_sensor_data.tof_distances[i] / 1000.0f;
-        rcl_publish(&tof_pub[i], &tof_msg, NULL);
-    }
+        tof_data[i] = (float)g_sensor_data.tof_distances[i] / 1000.0f;
+
+    std_msgs__msg__Float32MultiArray tof_msg;
+    memset(&tof_msg, 0, sizeof(tof_msg));
+    tof_msg.data.data = tof_data;
+    tof_msg.data.size = 5;
+    tof_msg.data.capacity = 5;
+    rcl_publish(&tof_pub, &tof_msg, NULL);
 
     /* Publish magnetometer */
     sensor_msgs__msg__MagneticField mag_msg;
@@ -107,6 +109,14 @@ static void sensor_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     rcl_publish(&telemetry_pub, &telem_msg, NULL);
 
     osMutexRelease(sensor_data_mutex);
+
+    /* Publish servo positions (outside mutex — servo_angles is local) */
+    std_msgs__msg__Float32MultiArray servo_msg;
+    memset(&servo_msg, 0, sizeof(servo_msg));
+    servo_msg.data.data = servo_angles;
+    servo_msg.data.size = 5;
+    servo_msg.data.capacity = 5;
+    rcl_publish(&servo_pos_pub, &servo_msg, NULL);
 }
 
 void StartuROSTask(void *argument)
@@ -145,18 +155,13 @@ void StartuROSTask(void *argument)
     rclc_support_init(&support, 0, NULL, &allocator);
     rclc_node_init_default(&node, "sensor_servo_board", "", &support);
 
-    /* Create ToF range publishers (tof_0 .. tof_4) */
-    for (int i = 0; i < 5; i++)
-    {
-        char topic_name[16];
-        snprintf(topic_name, sizeof(topic_name), "tof_%d", i);
-        rclc_publisher_init_default(
-            &tof_pub[i],
-            &node,
-            ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Range),
-            topic_name
-        );
-    }
+    /* Create ToF distances publisher (5-element float array, meters) */
+    rclc_publisher_init_default(
+        &tof_pub,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+        "tof"
+    );
 
     /* Create magnetometer publisher */
     rclc_publisher_init_default(
@@ -180,6 +185,14 @@ void StartuROSTask(void *argument)
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
         "telemetry"
+    );
+
+    /* Create servo position feedback publisher */
+    rclc_publisher_init_default(
+        &servo_pos_pub,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+        "servo_pos"
     );
 
     /* Create servo command subscription */
