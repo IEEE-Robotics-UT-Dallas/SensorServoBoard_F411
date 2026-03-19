@@ -1,8 +1,7 @@
 # GDB init for SensorServoBoard STM32F411 debugging
-target extended-remote :3333
+# ELF is passed as argument to GDB by the launch script
 
-# Load symbols
-file CubeIDE Project/SensorServorBoard/Debug/SensorServorBoard.elf
+target extended-remote :3333
 
 # Flash and reset
 monitor reset halt
