@@ -24,16 +24,23 @@ RESET='\033[0m'
 DO_FLASH=false
 INTERACTIVE=false
 
+BAUD=500000
+SERIAL_PORT=""
+
 for arg in "$@"; do
     case "$arg" in
         --flash) DO_FLASH=true ;;
         --interactive) INTERACTIVE=true ;;
+        --baud=*) BAUD="${arg#--baud=}" ;;
+        --port=*) SERIAL_PORT="${arg#--port=}" ;;
         --help|-h)
             echo "On-target test runner for SensorServoBoard F411"
             echo ""
             echo "  $0              Build automated tests"
             echo "  $0 --flash      Build + flash + open serial monitor"
             echo "  $0 --interactive Build interactive hw_test instead"
+            echo "  $0 --port=/dev/ttyACM0  Specify serial port"
+            echo "  $0 --baud=115200        Override baud rate"
             exit 0
             ;;
     esac
@@ -104,27 +111,30 @@ if $DO_FLASH; then
     fi
 
     echo ""
-    echo -e "${BOLD}Test output (500000 baud):${RESET}"
+    echo -e "${BOLD}Test output ($BAUD baud):${RESET}"
     echo "────────────────────────────────────────"
 
-    # Auto-detect serial port
-    SERIAL=""
-    for p in /dev/ttyUSB0 /dev/ttyACM0 /dev/ttyUSB1 /dev/ttyACM1; do
-        if [ -e "$p" ]; then
-            SERIAL="$p"
-            break
-        fi
-    done
+    # Use specified port or auto-detect
+    SERIAL="$SERIAL_PORT"
+    if [ -z "$SERIAL" ]; then
+        for p in /dev/ttyUSB0 /dev/ttyACM0 /dev/ttyUSB1 /dev/ttyACM1; do
+            if [ -e "$p" ]; then
+                SERIAL="$p"
+                break
+            fi
+        done
+    fi
 
     if [ -z "$SERIAL" ]; then
         echo "  No serial port found (/dev/ttyUSB* or /dev/ttyACM*)"
         echo "  Connect USB-UART adapter and run:"
-        echo "    picocom -b 500000 /dev/ttyUSB0"
+        echo "    picocom -b $BAUD /dev/ttyUSB0"
         exit 0
     fi
 
+    echo "  Port: $SERIAL"
     # Use picocom with auto-exit after 15 seconds of no output
-    timeout 30 picocom -b 500000 --noreset --imap lfcrlf "$SERIAL" 2>/dev/null || true
+    timeout 30 picocom -b "$BAUD" --noreset --imap lfcrlf "$SERIAL" 2>/dev/null || true
     echo ""
 else
     echo ""
