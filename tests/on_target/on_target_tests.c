@@ -203,6 +203,8 @@ static void test_i2c3_has_devices(void)
 
 /* ── MLX90393 Magnetometer Tests ───────────────────────────────── */
 
+#define I2C_TIMEOUT 100  /* ms — finite timeout for all test I2C ops */
+
 static void test_mag_present(void)
 {
     HAL_StatusTypeDef res = HAL_I2C_IsDeviceReady(&hi2c3, MLX90393_ADDR_8BIT, 3, 50);
@@ -211,14 +213,59 @@ static void test_mag_present(void)
 
 static void test_mag_init(void)
 {
-    Mag_Init(&hi2c3);
-    osDelay(50);
-    TEST_PASS("Mag_Init() completed");
+    uint8_t cmd;
+    uint8_t status;
+    HAL_StatusTypeDef res;
+
+    /* Reset */
+    cmd = MLX90393_CMD_RT;
+    res = HAL_I2C_Master_Transmit(&hi2c3, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { ASSERT_EQ("Mag reset TX", res, HAL_OK); return; }
+    res = HAL_I2C_Master_Receive(&hi2c3, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { ASSERT_EQ("Mag reset RX", res, HAL_OK); return; }
+    osDelay(5);
+
+    /* Exit mode */
+    cmd = MLX90393_CMD_EX;
+    res = HAL_I2C_Master_Transmit(&hi2c3, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { ASSERT_EQ("Mag exit TX", res, HAL_OK); return; }
+    res = HAL_I2C_Master_Receive(&hi2c3, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { ASSERT_EQ("Mag exit RX", res, HAL_OK); return; }
+    TEST_PASS("Mag_Init completed");
+}
+
+static MagData_t mag_read_safe(HAL_StatusTypeDef *out_res)
+{
+    MagData_t m = {0, 0, 0};
+    uint8_t cmd, status, buf[7];
+    HAL_StatusTypeDef res;
+
+    cmd = MLX90393_CMD_SM_XYZ;
+    res = HAL_I2C_Master_Transmit(&hi2c3, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { *out_res = res; return m; }
+    res = HAL_I2C_Master_Receive(&hi2c3, MLX90393_ADDR_8BIT, &status, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { *out_res = res; return m; }
+
+    osDelay(20);
+
+    cmd = MLX90393_CMD_RM_XYZ;
+    res = HAL_I2C_Master_Transmit(&hi2c3, MLX90393_ADDR_8BIT, &cmd, 1, I2C_TIMEOUT);
+    if (res != HAL_OK) { *out_res = res; return m; }
+    res = HAL_I2C_Master_Receive(&hi2c3, MLX90393_ADDR_8BIT, buf, 7, I2C_TIMEOUT);
+    if (res == HAL_OK) {
+        m.x = (int16_t)((buf[1] << 8) | buf[2]);
+        m.y = (int16_t)((buf[3] << 8) | buf[4]);
+        m.z = (int16_t)((buf[5] << 8) | buf[6]);
+    }
+    *out_res = res;
+    return m;
 }
 
 static void test_mag_read_nonzero(void)
 {
-    MagData_t m = Mag_Read(&hi2c3);
+    HAL_StatusTypeDef res;
+    MagData_t m = mag_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Mag read I2C", res, HAL_OK); return; }
     int any_nonzero = (m.x != 0) || (m.y != 0) || (m.z != 0);
     uart_printf("    (X=%d Y=%d Z=%d)\r\n", m.x, m.y, m.z);
     ASSERT_TRUE("Mag_Read returns nonzero data", any_nonzero);
@@ -226,22 +273,25 @@ static void test_mag_read_nonzero(void)
 
 static void test_mag_read_stable(void)
 {
-    MagData_t m1 = Mag_Read(&hi2c3);
+    HAL_StatusTypeDef res;
+    MagData_t m1 = mag_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Mag read1 I2C", res, HAL_OK); return; }
     osDelay(100);
-    MagData_t m2 = Mag_Read(&hi2c3);
+    MagData_t m2 = mag_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Mag read2 I2C", res, HAL_OK); return; }
 
     int dx = abs(m1.x - m2.x);
     int dy = abs(m1.y - m2.y);
     int dz = abs(m1.z - m2.z);
     uart_printf("    (delta: X=%d Y=%d Z=%d)\r\n", dx, dy, dz);
-    /* Stationary board — readings should be within 500 counts */
     ASSERT_TRUE("Mag readings stable (delta < 500)", dx < 500 && dy < 500 && dz < 500);
 }
 
 static void test_mag_read_in_range(void)
 {
-    MagData_t m = Mag_Read(&hi2c3);
-    /* MLX90393 raw values: int16_t range, typical earth field ~ few hundred counts */
+    HAL_StatusTypeDef res;
+    MagData_t m = mag_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Mag range I2C", res, HAL_OK); return; }
     ASSERT_TRUE("Mag X in int16 range", m.x > -32000 && m.x < 32000);
     ASSERT_TRUE("Mag Y in int16 range", m.y > -32000 && m.y < 32000);
     ASSERT_TRUE("Mag Z in int16 range", m.z > -32000 && m.z < 32000);
@@ -257,24 +307,40 @@ static void test_light_present(void)
 
 static void test_light_init(void)
 {
-    LightSensor_Init(&hi2c3);
+    /* ALS_CONF register: gain=1, IT=100ms, persistence=1, enable */
+    uint8_t conf[3] = {VEML7700_REG_ALS_CONF, 0x00, 0x00};
+    HAL_StatusTypeDef res = HAL_I2C_Master_Transmit(&hi2c3, VEML7700_ADDR_8BIT, conf, 3, I2C_TIMEOUT);
     osDelay(200);
-    TEST_PASS("LightSensor_Init() completed");
+    ASSERT_EQ("LightSensor_Init I2C OK", res, HAL_OK);
+}
+
+static uint16_t light_read_safe(HAL_StatusTypeDef *out_res)
+{
+    uint8_t reg = VEML7700_REG_ALS_DATA;
+    uint8_t buf[2] = {0, 0};
+    *out_res = HAL_I2C_Master_Transmit(&hi2c3, VEML7700_ADDR_8BIT, &reg, 1, I2C_TIMEOUT);
+    if (*out_res != HAL_OK) return 0;
+    *out_res = HAL_I2C_Master_Receive(&hi2c3, VEML7700_ADDR_8BIT, buf, 2, I2C_TIMEOUT);
+    return (uint16_t)(buf[1] << 8 | buf[0]);
 }
 
 static void test_light_read_plausible(void)
 {
-    uint16_t lux = LightSensor_Read(&hi2c3);
+    HAL_StatusTypeDef res;
+    uint16_t lux = light_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Light read I2C", res, HAL_OK); return; }
     uart_printf("    (lux = %u)\r\n", lux);
-    /* Indoor: 50-1000 lux typical, 0 = dark, 65535 = saturated */
     ASSERT_TRUE("Light reading < 65535 (not saturated)", lux < 65535);
 }
 
 static void test_light_read_stable(void)
 {
-    uint16_t l1 = LightSensor_Read(&hi2c3);
+    HAL_StatusTypeDef res;
+    uint16_t l1 = light_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Light read1 I2C", res, HAL_OK); return; }
     osDelay(200);
-    uint16_t l2 = LightSensor_Read(&hi2c3);
+    uint16_t l2 = light_read_safe(&res);
+    if (res != HAL_OK) { ASSERT_EQ("Light read2 I2C", res, HAL_OK); return; }
     int delta = abs((int)l1 - (int)l2);
     uart_printf("    (l1=%u l2=%u delta=%d)\r\n", l1, l2, delta);
     /* Stable lighting — readings within 20% or 50 lux */
