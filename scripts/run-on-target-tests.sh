@@ -120,7 +120,7 @@ if $DO_FLASH; then
         exit 0
     fi
 
-    # Flash without reset first — we'll reset after picocom is open
+    # Flash without reset first — we'll reset after serial is open
     echo "  Flashing test firmware (no reset)..."
     openocd -f "$SCRIPT_DIR/openocd.cfg" \
         -c "program \"$ELF\" verify exit" > /tmp/ssb-test-flash.log 2>&1
@@ -129,35 +129,48 @@ if $DO_FLASH; then
     echo ""
     echo -e "${BOLD}Test output ($BAUD baud, port: $SERIAL):${RESET}"
     echo "────────────────────────────────────────"
-    echo "  Opening serial monitor, then resetting board..."
 
-    # Start picocom in background, capturing to a log
+    # Configure serial port
+    if ! timeout 3 stty -F "$SERIAL" "$BAUD" raw -echo -hupcl 2>/dev/null; then
+        echo "  Warning: could not configure $SERIAL at $BAUD baud"
+    fi
+
+    # Start background serial capture
     LOGFILE="/tmp/ssb-test-output.log"
     > "$LOGFILE"
-    stty -F "$SERIAL" "$BAUD" raw -echo 2>/dev/null || true
-    cat "$SERIAL" | tee "$LOGFILE" &
+    timeout 35 cat "$SERIAL" >> "$LOGFILE" 2>/dev/null &
     CAT_PID=$!
-    sleep 1
+    sleep 0.5
 
-    # Now reset the board via OpenOCD to start tests
+    # Reset the board via OpenOCD to start tests
+    echo "  Resetting board..."
     openocd -f "$SCRIPT_DIR/openocd.cfg" \
-        -c "init; reset run; shutdown" > /dev/null 2>&1 &
-    OOCD_PID=$!
+        -c "init; reset run; shutdown" > /dev/null 2>&1 || true
+    echo "  Waiting for test output..."
 
-    # Wait for test output (look for the summary line or timeout)
+    # Tail the log so user sees output in real time
+    tail -f "$LOGFILE" 2>/dev/null &
+    TAIL_PID=$!
+
+    # Wait for test completion or timeout
     WAITED=0
     while [ $WAITED -lt 30 ]; do
         sleep 1
         WAITED=$((WAITED + 1))
         if grep -q "tests complete" "$LOGFILE" 2>/dev/null; then
-            sleep 1  # let final output flush
+            sleep 1
+            break
+        fi
+        # Also stop if cat already exited
+        if ! kill -0 $CAT_PID 2>/dev/null; then
             break
         fi
     done
 
+    kill $TAIL_PID 2>/dev/null || true
     kill $CAT_PID 2>/dev/null || true
+    wait $TAIL_PID 2>/dev/null || true
     wait $CAT_PID 2>/dev/null || true
-    wait $OOCD_PID 2>/dev/null || true
 
     echo ""
     echo "────────────────────────────────────────"
