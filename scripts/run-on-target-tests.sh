@@ -101,18 +101,6 @@ arm-none-eabi-size "$ELF"
 # ── Flash & monitor ──────────────────────────────────────────────
 if $DO_FLASH; then
     echo ""
-    echo "  Flashing test firmware..."
-    if STM32_Programmer_CLI -c port=SWD -d "$ELF" -v -rst > /tmp/ssb-test-flash.log 2>&1; then
-        echo -e "  ${GREEN}✓${RESET} Flashed — opening serial monitor..."
-    else
-        echo -e "  ${RED}✗${RESET} STM32_Programmer_CLI failed, trying OpenOCD..."
-        openocd -f "$SCRIPT_DIR/openocd.cfg" \
-            -c "program \"$ELF\" verify reset exit" > /tmp/ssb-test-flash.log 2>&1 || true
-    fi
-
-    echo ""
-    echo -e "${BOLD}Test output ($BAUD baud):${RESET}"
-    echo "────────────────────────────────────────"
 
     # Use specified port or auto-detect
     SERIAL="$SERIAL_PORT"
@@ -132,9 +120,57 @@ if $DO_FLASH; then
         exit 0
     fi
 
-    echo "  Port: $SERIAL"
-    # Use picocom with auto-exit after 15 seconds of no output
-    timeout 30 picocom -b "$BAUD" --noreset --imap lfcrlf "$SERIAL" 2>/dev/null || true
+    # Flash without reset first — we'll reset after picocom is open
+    echo "  Flashing test firmware (no reset)..."
+    openocd -f "$SCRIPT_DIR/openocd.cfg" \
+        -c "program \"$ELF\" verify exit" > /tmp/ssb-test-flash.log 2>&1
+    echo -e "  ${GREEN}✓${RESET} Flashed"
+
+    echo ""
+    echo -e "${BOLD}Test output ($BAUD baud, port: $SERIAL):${RESET}"
+    echo "────────────────────────────────────────"
+    echo "  Opening serial monitor, then resetting board..."
+
+    # Start picocom in background, capturing to a log
+    LOGFILE="/tmp/ssb-test-output.log"
+    > "$LOGFILE"
+    stty -F "$SERIAL" "$BAUD" raw -echo 2>/dev/null || true
+    cat "$SERIAL" | tee "$LOGFILE" &
+    CAT_PID=$!
+    sleep 1
+
+    # Now reset the board via OpenOCD to start tests
+    openocd -f "$SCRIPT_DIR/openocd.cfg" \
+        -c "init; reset run; shutdown" > /dev/null 2>&1 &
+    OOCD_PID=$!
+
+    # Wait for test output (look for the summary line or timeout)
+    WAITED=0
+    while [ $WAITED -lt 30 ]; do
+        sleep 1
+        WAITED=$((WAITED + 1))
+        if grep -q "tests complete" "$LOGFILE" 2>/dev/null; then
+            sleep 1  # let final output flush
+            break
+        fi
+    done
+
+    kill $CAT_PID 2>/dev/null || true
+    wait $CAT_PID 2>/dev/null || true
+    wait $OOCD_PID 2>/dev/null || true
+
+    echo ""
+    echo "────────────────────────────────────────"
+    if grep -q "FAIL" "$LOGFILE" 2>/dev/null; then
+        FAILS=$(grep -c "FAIL" "$LOGFILE")
+        echo -e "  ${RED}✗${RESET} $FAILS test failure(s) — see output above"
+    elif grep -q "PASS" "$LOGFILE" 2>/dev/null; then
+        PASSES=$(grep -c "PASS" "$LOGFILE")
+        echo -e "  ${GREEN}✓${RESET} All $PASSES tests passed"
+    else
+        echo "  No test output received — check wiring and baud rate ($BAUD)"
+        echo "  Try: picocom -b $BAUD $SERIAL"
+    fi
     echo ""
 else
     echo ""
