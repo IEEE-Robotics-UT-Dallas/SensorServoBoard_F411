@@ -30,7 +30,7 @@ void microros_deallocate(void * pointer, void * state);
 void * microros_reallocate(void * pointer, size_t size, void * state);
 void * microros_zero_allocate(size_t number_of_elements, size_t size_of_element, void * state);
 
-extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart6;
 
 /* Publishers */
 static rcl_publisher_t tof_pub[5];
@@ -116,7 +116,7 @@ void StartuROSTask(void *argument)
     /* Register custom UART DMA transport */
     rmw_uros_set_custom_transport(
         true,
-        (void *) &huart1,
+        (void *) &huart6,
         cubemx_transport_open,
         cubemx_transport_close,
         cubemx_transport_write,

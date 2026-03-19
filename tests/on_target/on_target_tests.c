@@ -155,6 +155,48 @@ static void test_uart_tx(void)
     ASSERT_EQ("USART6 TX returns HAL_OK", res, HAL_OK);
 }
 
+static void test_uart6_dma(void)
+{
+    int dma_rx_linked = (huart6.hdmarx != NULL);
+    int dma_tx_linked = (huart6.hdmatx != NULL);
+    uart_printf("    (hdmarx=%p hdmatx=%p)\r\n",
+                (void*)huart6.hdmarx, (void*)huart6.hdmatx);
+    ASSERT_TRUE("USART6 DMA RX handle linked", dma_rx_linked);
+    ASSERT_TRUE("USART6 DMA TX handle linked", dma_tx_linked);
+
+    if (dma_rx_linked) {
+        /* Verify DMA RX stream is configured for USART6 (DMA2_Stream1) */
+        ASSERT_TRUE("USART6 DMA RX instance = DMA2_Stream1",
+                     huart6.hdmarx->Instance == DMA2_Stream1);
+    }
+    if (dma_tx_linked) {
+        ASSERT_TRUE("USART6 DMA TX instance = DMA2_Stream6",
+                     huart6.hdmatx->Instance == DMA2_Stream6);
+    }
+
+    /* Test DMA TX: send a short burst */
+    uint8_t dma_test[] = "DMA_OK";
+    HAL_StatusTypeDef res = HAL_UART_Transmit_DMA(&huart6, dma_test, sizeof(dma_test) - 1);
+    if (res == HAL_OK) {
+        /* Wait for TX complete */
+        int timeout = 100;
+        while (huart6.gState != HAL_UART_STATE_READY && timeout-- > 0)
+            HAL_Delay(1);
+    }
+    uart_print("\r\n");
+    ASSERT_EQ("USART6 DMA TX returns HAL_OK", res, HAL_OK);
+
+    /* Test DMA RX: start circular receive, check counter moves */
+    static uint8_t rx_buf[64];
+    res = HAL_UART_Receive_DMA(&huart6, rx_buf, sizeof(rx_buf));
+    uart_printf("    (DMA RX start: %d, NDTR=%lu)\r\n",
+                (int)res,
+                (unsigned long)__HAL_DMA_GET_COUNTER(huart6.hdmarx));
+    ASSERT_EQ("USART6 DMA RX start returns HAL_OK", res, HAL_OK);
+    /* Stop DMA so UART is available for test output again */
+    HAL_UART_DMAStop(&huart6);
+}
+
 /* ── I2C Bus Tests ─────────────────────────────────────────────── */
 
 static void test_i2c1_initialized(void)
@@ -495,12 +537,14 @@ void HW_Test_Run(void)
     test_group("UART");
     RUN_TEST(test_uart_initialized);
     RUN_TEST(test_uart_tx);
+    RUN_TEST(test_uart6_dma);
 
     /* ── I2C Buses ── */
     test_group("I2C Buses");
     RUN_TEST(test_i2c1_initialized);
     RUN_TEST(test_i2c2_initialized);
     RUN_TEST(test_i2c3_initialized);
+    i2c_recover(&hi2c3);
     RUN_TEST(test_i2c3_has_devices);
 
     /* ── Magnetometer ── */

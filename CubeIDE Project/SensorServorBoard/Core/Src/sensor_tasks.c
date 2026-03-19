@@ -96,6 +96,17 @@ void StartI2C2Task(void *argument) {
 }
 
 void StartI2C3Task(void *argument) {
+    /* Create mutex if not already created (I2C1 task may be disabled) */
+    if (sensor_data_mutex == NULL) {
+        const osMutexAttr_t mutex_attr = {
+            .name = "sensorDataMutex",
+            .attr_bits = osMutexRecursive,
+            .cb_mem = NULL,
+            .cb_size = 0U
+        };
+        sensor_data_mutex = osMutexNew(&mutex_attr);
+    }
+
     /* Mag + Light are on I2C3; ToF 5 not connected yet */
     Mag_Init(&hi2c3);
     LightSensor_Init(&hi2c3);

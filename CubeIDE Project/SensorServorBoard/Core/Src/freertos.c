@@ -55,5 +55,21 @@
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+    (void)xTask;
+    (void)pcTaskName;
+    /* Trap here — connect debugger to inspect pcTaskName */
+    __disable_irq();
+    for (;;) {}
+}
+
+void vApplicationMallocFailedHook(void)
+{
+    /* Heap exhausted — trap for debugger */
+    __disable_irq();
+    for (;;) {}
+}
+
 /* USER CODE END Application */
 

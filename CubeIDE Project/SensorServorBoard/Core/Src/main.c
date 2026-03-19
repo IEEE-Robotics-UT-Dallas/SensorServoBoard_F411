@@ -52,6 +52,8 @@ I2C_HandleTypeDef hi2c3;
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart1_tx;
+DMA_HandleTypeDef hdma_usart6_rx;
+DMA_HandleTypeDef hdma_usart6_tx;
 
 UART_HandleTypeDef huart6;
 
@@ -158,26 +160,29 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
 #ifndef HW_TEST
+  /* I2C3 task: magnetometer + light sensor (always present) */
+  const osThreadAttr_t i2c3Task_attributes = {
+    .name = "i2c3Task",
+    .stack_size = 256 * 4,
+    .priority = (osPriority_t) osPriorityNormal,
+  };
+  osThreadNew(StartI2C3Task, NULL, &i2c3Task_attributes);
+
+#ifdef TOF_SENSORS_CONNECTED
   const osThreadAttr_t i2c1Task_attributes = {
     .name = "i2c1Task",
-    .stack_size = 192 * 4,
+    .stack_size = 256 * 4,
     .priority = (osPriority_t) osPriorityNormal,
   };
   osThreadNew(StartI2C1Task, NULL, &i2c1Task_attributes);
 
   const osThreadAttr_t i2c2Task_attributes = {
     .name = "i2c2Task",
-    .stack_size = 192 * 4,
+    .stack_size = 256 * 4,
     .priority = (osPriority_t) osPriorityNormal,
   };
   osThreadNew(StartI2C2Task, NULL, &i2c2Task_attributes);
-
-  const osThreadAttr_t i2c3Task_attributes = {
-    .name = "i2c3Task",
-    .stack_size = 192 * 4,
-    .priority = (osPriority_t) osPriorityNormal,
-  };
-  osThreadNew(StartI2C3Task, NULL, &i2c3Task_attributes);
+#endif
 #endif
 
 #ifdef MICRO_ROS_ENABLED
@@ -372,8 +377,12 @@ static void MX_DMA_Init(void)
 {
   __HAL_RCC_DMA2_CLK_ENABLE();
 
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
   HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+  HAL_NVIC_SetPriority(DMA2_Stream6_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);
   HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
 }

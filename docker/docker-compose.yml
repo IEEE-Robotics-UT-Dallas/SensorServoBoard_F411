@@ -1,0 +1,22 @@
+services:
+  # micro-ROS agent: bridges STM32 UART ↔ ROS 2 DDS
+  uros-agent:
+    image: microros/micro-ros-agent:jazzy
+    container_name: uros-agent
+    network_mode: host
+    devices:
+      - ${SERIAL_PORT:-/dev/ttyACM0}:${SERIAL_PORT:-/dev/ttyACM0}
+    command: serial --dev ${SERIAL_PORT:-/dev/ttyACM0} -b ${BAUD:-500000} -v6
+    restart: unless-stopped
+
+  # ROS 2 CLI tools for inspecting topics, echoing data
+  ros2-cli:
+    image: ros:jazzy
+    container_name: ros2-cli
+    network_mode: host
+    depends_on:
+      - uros-agent
+    stdin_open: true
+    tty: true
+    entrypoint: /bin/bash
+    command: ["-c", "source /opt/ros/jazzy/setup.bash && exec bash"]
