@@ -24,6 +24,9 @@
 /* USER CODE BEGIN Includes */
 #include "sensor_tasks.h"
 #include "uros_task.h"
+#ifdef HW_TEST
+#include "hw_test.h"
+#endif
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -171,12 +174,14 @@ int main(void)
   };
   osThreadNew(StartI2C3Task, NULL, &i2c3Task_attributes);
 
+#ifdef MICRO_ROS_ENABLED
   const osThreadAttr_t uROSTask_attributes = {
     .name = "uROSTask",
     .stack_size = 2500 * 4,  /* 10KB for micro-ROS */
     .priority = (osPriority_t) osPriorityNormal,
   };
   osThreadNew(StartuROSTask, NULL, &uROSTask_attributes);
+#endif
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -533,6 +538,9 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
+#ifdef HW_TEST
+  HW_Test_Run();
+#endif
   /* Infinite loop */
   for(;;)
   {
