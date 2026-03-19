@@ -514,7 +514,22 @@ class BootCommand(gdb.Command):
         wait = float(arg) if arg.strip() else 3.0
         print(f"Resetting and booting firmware ({wait:.0f}s)...")
 
-        gdb.execute('monitor reset init', to_string=True)
+        # NVIC System Reset — proper hardware reset via AIRCR register
+        # Resets all peripherals + CPU, like a power cycle
+        AIRCR = 0xE000ED0C
+        VECTKEY = 0x05FA0000
+        SYSRESETREQ = 0x00000004
+        gdb.execute('monitor halt', to_string=True)
+        gdb.execute(f'set *(uint32_t*){AIRCR:#x} = {VECTKEY | SYSRESETREQ:#x}',
+                    to_string=True)
+        time.sleep(0.3)
+        # CPU restarts at reset vector — reconnect and halt
+        try:
+            gdb.execute('monitor halt', to_string=True)
+        except gdb.error:
+            time.sleep(0.5)
+            gdb.execute('monitor halt', to_string=True)
+
         _timed_continue(wait)
 
         time.sleep(0.05)
