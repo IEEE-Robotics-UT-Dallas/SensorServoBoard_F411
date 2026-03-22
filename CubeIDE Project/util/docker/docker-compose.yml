@@ -1,0 +1,60 @@
+services:
+  # All-in-one: micro-ROS agent + ROS 2 CLI shell
+  #
+  # Usage:
+  #   docker compose -f docker/docker-compose.yml run --rm ros2
+  #
+  ros2:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    image: ssb-ros2-agent:jazzy
+    container_name: ssb-ros2
+    network_mode: host
+    privileged: true
+    volumes:
+      - /dev:/dev
+      - ../jetson_ws:/ws
+    stdin_open: true
+    tty: true'm focusing intently on tool selection, prioritizing the most specific ones available. I've been diligently listing alternative tools before initiating any function calls, avoiding unnecessary bash utilities. This meticulous approach has already streamlined several operations.
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        source /ros_entrypoint.sh
+        source /uros_ws/install/setup.bash
+        
+        # Build our custom node
+        if [ -d "/ws" ]; then
+          echo "Building custom node in /ws..."
+          cd /ws && colcon build
+          source /ws/install/setup.bash
+        fi
+        
+        echo "Starting micro-ROS agent on ${SERIAL_PORT:-/dev/ttyACM0} @ ${BAUD:-500000} baud..."
+        setsid ros2 run micro_ros_agent micro_ros_agent serial \
+          --dev ${SERIAL_PORT:-/dev/ttyACM0} -b ${BAUD:-500000} -v4 \
+          > /tmp/agent.log 2>&1 &
+        sleep 3
+        if grep -q "running" /tmp/agent.log 2>/dev/null; then
+          echo "✓ Agent running"
+        else
+          echo "✗ Agent failed to start. Log:"
+          cat /tmp/agent.log
+        fi
+        
+        # Start our custom node
+        if [ -d "/ws" ]; then
+          echo "Starting sensor2servo node in background..."
+          setsid ros2 launch sensor_servo_agent agent_launch.py \
+            > /tmp/node.log 2>&1 &
+        fi
+        
+        echo ""
+        echo "  ros2 topic list"
+        echo "  ros2 topic echo /imu/mag"
+        echo "  tail -f /tmp/agent.log    (view agent logs)"
+        echo "  tail -f /tmp/node.log     (view node logs)"
+        echo ""
+        export PS1="ros2@ssb:\\w\\$ "
+        exec bash --norc --noprofile -c "source /ros_entrypoint.sh; source /uros_ws/install/setup.bash; [ -f /ws/install/setup.bash ] && source /ws/install/setup.bash; export PS1='ros2@ssb:\\w\\$ '; exec bash --norc -i"

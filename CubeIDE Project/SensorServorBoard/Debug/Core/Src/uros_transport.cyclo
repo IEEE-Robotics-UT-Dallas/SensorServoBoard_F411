@@ -1,0 +1,5 @@
+../Core/Src/uros_transport.c:35:13:ensure_dma_rx_running	2
+../Core/Src/uros_transport.c:53:6:cubemx_transport_open	1
+../Core/Src/uros_transport.c:78:6:cubemx_transport_close	1
+../Core/Src/uros_transport.c:85:8:cubemx_transport_write	6
+../Core/Src/uros_transport.c:119:8:cubemx_transport_read	5

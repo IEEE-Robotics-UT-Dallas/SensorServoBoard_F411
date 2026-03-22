@@ -1,0 +1,6 @@
+../Core/Src/veml7700.c:19:17:veml7700_read_register	2
+../Core/Src/veml7700.c:28:6:LightSensor_Init	2
+../Core/Src/veml7700.c:41:10:LightSensor_ReadRaw	1
+../Core/Src/veml7700.c:46:10:LightSensor_ReadWhite	1
+../Core/Src/veml7700.c:51:7:LightSensor_ReadLux	2
+../Core/Src/veml7700.c:69:10:LightSensor_Read	1

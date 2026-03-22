@@ -95,7 +95,9 @@
 #define configTIMER_QUEUE_LENGTH                 10
 #define configTIMER_TASK_STACK_DEPTH             256
 
-/* The following flag must be enabled only when using newlib */
+/* Required by STM32_THREAD_SAFE_STRATEGY=4 (set in .cproject).
+ * Strategy 4 uses FreeRTOS mutexes for newlib thread safety and
+ * needs per-task _reent structs.  DO NOT set to 0. */
 #define configUSE_NEWLIB_REENTRANT          1
 
 /* CMSIS-RTOS V2 flags */

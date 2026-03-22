@@ -67,7 +67,7 @@ osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
 
@@ -190,7 +190,7 @@ int main(void)
 #ifdef MICRO_ROS_ENABLED
   const osThreadAttr_t uROSTask_attributes = {
     .name = "uROSTask",
-    .stack_size = 2500 * 4,  /* 10KB for micro-ROS */
+    .stack_size = 2000 * 4,  /* 8KB for micro-ROS */
     .priority = (osPriority_t) osPriorityNormal,
   };
   osThreadNew(StartuROSTask, NULL, &uROSTask_attributes);

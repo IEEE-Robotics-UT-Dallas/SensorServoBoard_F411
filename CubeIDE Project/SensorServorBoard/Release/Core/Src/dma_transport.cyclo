@@ -1,0 +1,4 @@
+../Core/Src/dma_transport.c:20:6:cubemx_transport_open	1
+../Core/Src/dma_transport.c:27:6:cubemx_transport_close	1
+../Core/Src/dma_transport.c:34:8:cubemx_transport_write	4
+../Core/Src/dma_transport.c:51:8:cubemx_transport_read	7

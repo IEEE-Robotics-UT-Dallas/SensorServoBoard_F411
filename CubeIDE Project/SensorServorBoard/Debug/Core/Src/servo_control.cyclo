@@ -1,0 +1,5 @@
+../Core/Src/servo_control.c:17:7:ServoControl_GetOffset	2
+../Core/Src/servo_control.c:23:6:ServoControl_SetOffset	2
+../Core/Src/servo_control.c:29:6:ServoControl_Init	1
+../Core/Src/servo_control.c:39:6:ServoControl_SetPulse	5
+../Core/Src/servo_control.c:47:6:ServoControl_SetAngle	5

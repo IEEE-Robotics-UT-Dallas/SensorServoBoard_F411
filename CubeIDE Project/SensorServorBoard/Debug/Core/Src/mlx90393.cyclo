@@ -1,0 +1,3 @@
+../Core/Src/mlx90393.c:6:26:mlx_write_reg	3
+../Core/Src/mlx90393.c:19:6:Mag_Init	7
+../Core/Src/mlx90393.c:60:11:Mag_Read	3

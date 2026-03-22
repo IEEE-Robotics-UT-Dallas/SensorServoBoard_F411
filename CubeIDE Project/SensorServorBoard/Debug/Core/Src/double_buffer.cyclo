@@ -1,0 +1,4 @@
+../Core/Src/double_buffer.c:7:6:DoubleBuffer_Init	1
+../Core/Src/double_buffer.c:13:20:DoubleBuffer_GetWriteBuffer	1
+../Core/Src/double_buffer.c:18:6:DoubleBuffer_Swap	1
+../Core/Src/double_buffer.c:34:26:DoubleBuffer_GetReadBuffer	1

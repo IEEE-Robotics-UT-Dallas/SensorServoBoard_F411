@@ -2,13 +2,11 @@
 #include "i2c_common.h"
 #include "cmsis_os.h"
 
-void VL53L0X_SetAddress(I2C_HandleTypeDef *hi2c, uint8_t old_addr, uint8_t new_addr)
+HAL_StatusTypeDef VL53L0X_SetAddress(I2C_HandleTypeDef *hi2c, uint8_t old_addr, uint8_t new_addr)
 {
     uint8_t new_addr_7bit = new_addr >> 1;
-    if (HAL_I2C_Mem_Write(hi2c, old_addr, VL53L0X_REG_I2C_SLAVE_DEVICE_ADDRESS,
-                          I2C_MEMADD_SIZE_8BIT, &new_addr_7bit, 1, I2C_TIMEOUT) != HAL_OK) {
-        i2c_recover(hi2c);
-    }
+    return HAL_I2C_Mem_Write(hi2c, old_addr, VL53L0X_REG_I2C_SLAVE_DEVICE_ADDRESS,
+                             I2C_MEMADD_SIZE_8BIT, &new_addr_7bit, 1, I2C_TIMEOUT);
 }
 
 void VL53L0X_Init(I2C_HandleTypeDef *hi2c, uint8_t addr)

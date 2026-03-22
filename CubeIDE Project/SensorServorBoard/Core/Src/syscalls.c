@@ -174,3 +174,10 @@ int _execve(char *name, char **argv, char **env)
   errno = ENOMEM;
   return -1;
 }
+
+int _gettimeofday(struct timeval *tv, void *tzvp)
+{
+  (void)tv;
+  (void)tzvp;
+  return 0; /* Return 0 to indicate success, even if it's a dummy */
+}

@@ -126,7 +126,6 @@ size_t cubemx_transport_read(struct uxrCustomTransport * transport,
     ensure_dma_rx_running(uart);
 
     int ms_used = 0;
-    size_t available;
 
     while (ms_used < timeout)
     {

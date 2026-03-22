@@ -1,0 +1,5 @@
+../Core/Src/custom_memory_manager.c:28:8:getBlockSize	1
+../Core/Src/custom_memory_manager.c:37:7:pvPortMallocMicroROS	1
+../Core/Src/custom_memory_manager.c:42:6:vPortFreeMicroROS	1
+../Core/Src/custom_memory_manager.c:47:7:pvPortReallocMicroROS	4
+../Core/Src/custom_memory_manager.c:66:7:pvPortCallocMicroROS	2

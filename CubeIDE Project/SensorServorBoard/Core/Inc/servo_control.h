@@ -3,14 +3,12 @@
 
 #include "main.h"
 
-#define SERVO_COUNT 5
+#define SERVO_COUNT 3
 
 typedef enum {
     SERVO_CTRL_1 = 0, // PA1, TIM2_CH2
     SERVO_CTRL_2 = 1, // PA2, TIM2_CH3
-    SERVO_CTRL_3 = 2, // PA3, TIM2_CH4
-    SERVO_CTRL_4 = 3, // PA5, TIM2_CH1
-    SERVO_CTRL_5 = 4  // PA6, TIM3_CH1
+    SERVO_CTRL_3 = 2  // PA3, TIM2_CH4
 } ServoCtrl_ID_t;
 
 void ServoControl_Init(void);

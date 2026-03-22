@@ -1,0 +1,7 @@
+../Core/Src/sensor_drivers.c:8:6:VL53L0X_SetAddress	1
+../Core/Src/sensor_drivers.c:14:6:VL53L0X_Init	1
+../Core/Src/sensor_drivers.c:22:10:VL53L0X_ReadDistance	4
+../Core/Src/sensor_drivers.c:53:6:Mag_Init	1
+../Core/Src/sensor_drivers.c:60:11:Mag_Read	2
+../Core/Src/sensor_drivers.c:77:6:LightSensor_Init	1
+../Core/Src/sensor_drivers.c:86:10:LightSensor_Read	2

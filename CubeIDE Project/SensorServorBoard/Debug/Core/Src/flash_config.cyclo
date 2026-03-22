@@ -1,0 +1,4 @@
+../Core/Src/flash_config.c:4:17:CalculateCRC	2
+../Core/Src/flash_config.c:14:6:Flash_GetDefaultConfig	1
+../Core/Src/flash_config.c:27:19:Flash_LoadConfig	3
+../Core/Src/flash_config.c:41:19:Flash_SaveConfig	4

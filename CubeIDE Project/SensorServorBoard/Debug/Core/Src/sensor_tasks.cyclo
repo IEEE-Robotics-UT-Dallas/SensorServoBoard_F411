@@ -1,0 +1,4 @@
+../Core/Src/sensor_tasks.c:19:6:StartI2C1Task	1
+../Core/Src/sensor_tasks.c:53:6:StartI2C2Task	1
+../Core/Src/sensor_tasks.c:85:6:StartI2C3Task	4
+../Core/Src/sensor_tasks.c:142:6:StartServoTask	3

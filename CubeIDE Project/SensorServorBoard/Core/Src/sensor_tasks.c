@@ -23,17 +23,19 @@ void StartI2C1Task(void *argument) {
 
     // 2. Turn on ToF 1
     HAL_GPIO_WritePin(XSHUT_PORT_1_2, XSHUT_PIN_TOF1, GPIO_PIN_SET);
-    osDelay(5); // Wait for boot
-    // 3. Change ToF 1 Address
+    osDelay(15);
+    // 3. Init at default, then change ToF 1 address
+    VL53L0X_Init(&hi2c1, TOF_DEFAULT_ADDR);
     VL53L0X_SetAddress(&hi2c1, TOF_DEFAULT_ADDR, TOF_1_ADDR);
-    VL53L0X_Init(&hi2c1, TOF_1_ADDR);
+    osDelay(20);
 
     // 4. Turn on ToF 2
     HAL_GPIO_WritePin(XSHUT_PORT_1_2, XSHUT_PIN_TOF2, GPIO_PIN_SET);
-    osDelay(5);
-    // 5. Change ToF 2 Address
+    osDelay(15);
+    // 5. Init at default, then change ToF 2 address
+    VL53L0X_Init(&hi2c1, TOF_DEFAULT_ADDR);
     VL53L0X_SetAddress(&hi2c1, TOF_DEFAULT_ADDR, TOF_2_ADDR);
-    VL53L0X_Init(&hi2c1, TOF_2_ADDR);
+    osDelay(20);
 
     for(;;) {
         uint16_t d1 = VL53L0X_ReadDistance(&hi2c1, TOF_1_ADDR);
@@ -55,15 +57,17 @@ void StartI2C2Task(void *argument) {
 
     // 2. Turn on ToF 3
     HAL_GPIO_WritePin(XSHUT_PORT_3_4, XSHUT_PIN_TOF3, GPIO_PIN_SET);
-    osDelay(5);
+    osDelay(15);
+    VL53L0X_Init(&hi2c2, TOF_DEFAULT_ADDR);
     VL53L0X_SetAddress(&hi2c2, TOF_DEFAULT_ADDR, TOF_3_ADDR);
-    VL53L0X_Init(&hi2c2, TOF_3_ADDR);
+    osDelay(20);
 
     // 3. Turn on ToF 4
     HAL_GPIO_WritePin(XSHUT_PORT_3_4, XSHUT_PIN_TOF4, GPIO_PIN_SET);
-    osDelay(5);
+    osDelay(15);
+    VL53L0X_Init(&hi2c2, TOF_DEFAULT_ADDR);
     VL53L0X_SetAddress(&hi2c2, TOF_DEFAULT_ADDR, TOF_4_ADDR);
-    VL53L0X_Init(&hi2c2, TOF_4_ADDR);
+    osDelay(20);
 
     for(;;) {
         uint16_t d3 = VL53L0X_ReadDistance(&hi2c2, TOF_3_ADDR);

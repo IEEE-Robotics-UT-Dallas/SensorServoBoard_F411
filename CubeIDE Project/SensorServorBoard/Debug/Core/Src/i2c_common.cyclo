@@ -1,0 +1,12 @@
+../Core/Src/i2c_common.c:13:6:i2c3_dma_init	1
+../Core/Src/i2c_common.c:20:6:HAL_I2C_MasterTxCpltCallback	3
+../Core/Src/i2c_common.c:28:6:HAL_I2C_MasterRxCpltCallback	3
+../Core/Src/i2c_common.c:36:6:HAL_I2C_MemTxCpltCallback	3
+../Core/Src/i2c_common.c:44:6:HAL_I2C_MemRxCpltCallback	3
+../Core/Src/i2c_common.c:52:6:HAL_I2C_ErrorCallback	3
+../Core/Src/i2c_common.c:60:19:i2c3_transmit_dma	4
+../Core/Src/i2c_common.c:71:19:i2c3_receive_dma	4
+../Core/Src/i2c_common.c:82:19:i2c3_mem_read_dma	4
+../Core/Src/i2c_common.c:96:19:i2c3_mem_write_dma	4
+../Core/Src/i2c_common.c:115:13:i2c3_bus_unstick	8
+../Core/Src/i2c_common.c:172:6:i2c_recover	2

@@ -14,8 +14,9 @@
 
 /**
  * @brief  Change the I2C address of a VL53L0X sensor.
+ * @retval HAL_OK on success, HAL error code on failure.
  */
-void VL53L0X_SetAddress(I2C_HandleTypeDef *hi2c, uint8_t old_addr, uint8_t new_addr);
+HAL_StatusTypeDef VL53L0X_SetAddress(I2C_HandleTypeDef *hi2c, uint8_t old_addr, uint8_t new_addr);
 
 /**
  * @brief  Initialize a VL53L0X sensor at the given address.
