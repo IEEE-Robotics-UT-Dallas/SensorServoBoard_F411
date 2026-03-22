@@ -19,9 +19,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ROS_IMG="ros:jazzy"
+ROS_IMG="ros:humble"
 NET="--net=host"
-SH="source /opt/ros/jazzy/setup.bash"
+SH="source /opt/ros/humble/setup.bash"
 
 header() {
   printf '\n\033[1;36m%s\033[0m\n' "$1"

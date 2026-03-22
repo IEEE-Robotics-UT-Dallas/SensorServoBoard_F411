@@ -36,5 +36,5 @@ echo ""
 docker run --rm -it \
     --device="$PORT" \
     --net=host \
-    microros/micro-ros-agent:jazzy \
+    microros/micro-ros-agent:humble \
     serial --dev "$PORT" -b "$BAUD" -v6

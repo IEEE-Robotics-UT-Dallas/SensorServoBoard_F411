@@ -6,8 +6,8 @@ set -e
 
 # Check if ROS 2 is sourced
 if [ -z "$ROS_DISTRO" ]; then
-    if [ -f "/opt/ros/jazzy/setup.bash" ]; then
-        source /opt/ros/jazzy/setup.bash
+    if [ -f "/opt/ros/humble/setup.bash" ]; then
+        source /opt/ros/humble/setup.bash
     else
         echo "Error: ROS 2 setup.bash not found. Is ROS 2 installed on this Jetson?"
         exit 1

@@ -116,7 +116,7 @@ STM32 USART6 (USB-C) → UART-over-Arduino → Jetson USB
 ```bash
 # Option A: Quick docker run
 docker run --rm -it --device=/dev/ttyUSB0 --net=host \
-  microros/micro-ros-agent:jazzy serial --dev /dev/ttyUSB0 -b 500000 -v6
+  microros/micro-ros-agent:humble serial --dev /dev/ttyUSB0 -b 500000 -v6
 
 # Option B: Docker compose (persistent)
 cd ~/SensorServoBoard_F411
@@ -128,7 +128,7 @@ SERIAL_PORT=/dev/ttyUSB0 BAUD=500000 docker compose -f docker/docker-compose.yml
 
 ### Verifying Topics
 ```bash
-# Inside the ros2-cli container, or any ROS 2 Jazzy shell:
+# Inside the ros2-cli container, or any ROS 2 Humble shell:
 ros2 topic list
 ros2 topic echo /imu/mag
 ros2 topic echo /telemetry

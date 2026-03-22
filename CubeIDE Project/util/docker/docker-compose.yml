@@ -8,7 +8,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.agent
-    image: ssb-ros2-agent:jazzy
+    image: ssb-ros2-agent:humble
     container_name: ssb-ros2
     network_mode: host
     privileged: true

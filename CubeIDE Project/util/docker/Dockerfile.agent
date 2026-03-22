@@ -1,4 +1,4 @@
-FROM microros/micro-ros-agent:jazzy
+FROM microros/micro-ros-agent:humble
 
 USER root
 RUN apt-get update && apt-get install -y \

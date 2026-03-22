@@ -29,8 +29,8 @@ echo "  ✓ Docker running"
 # Pull images if needed
 echo ""
 echo "  Pulling Docker images (if needed)..."
-docker pull -q microros/micro-ros-agent:jazzy 2>/dev/null || true
-docker pull -q ros:jazzy 2>/dev/null || true
+docker pull -q microros/micro-ros-agent:humble 2>/dev/null || true
+docker pull -q ros:humble 2>/dev/null || true
 
 # Stop any existing containers
 docker compose -f docker/docker-compose.yml down 2>/dev/null || true
@@ -57,7 +57,7 @@ echo "  Checking for ROS 2 topics..."
 TOPICS=""
 for i in $(seq 1 $TIMEOUT); do
     TOPICS=$(docker compose -f docker/docker-compose.yml run --rm ros2-cli \
-        bash -c "source /opt/ros/jazzy/setup.bash && ros2 topic list 2>/dev/null" 2>/dev/null || true)
+        bash -c "source /opt/ros/humble/setup.bash && ros2 topic list 2>/dev/null" 2>/dev/null || true)
     if echo "$TOPICS" | grep -q "tof_\|imu/mag\|light\|telemetry"; then
         break
     fi
@@ -76,19 +76,19 @@ if echo "$TOPICS" | grep -q "tof_\|imu/mag\|light\|telemetry"; then
 
     echo "  ── /imu/mag ──"
     docker compose -f docker/docker-compose.yml run --rm ros2-cli \
-        bash -c "source /opt/ros/jazzy/setup.bash && timeout 5 ros2 topic echo /imu/mag --once 2>/dev/null" 2>/dev/null \
+        bash -c "source /opt/ros/humble/setup.bash && timeout 5 ros2 topic echo /imu/mag --once 2>/dev/null" 2>/dev/null \
         | head -10 | sed 's/^/    /' || echo "    (no data yet)"
 
     echo ""
     echo "  ── /light ──"
     docker compose -f docker/docker-compose.yml run --rm ros2-cli \
-        bash -c "source /opt/ros/jazzy/setup.bash && timeout 5 ros2 topic echo /light --once 2>/dev/null" 2>/dev/null \
+        bash -c "source /opt/ros/humble/setup.bash && timeout 5 ros2 topic echo /light --once 2>/dev/null" 2>/dev/null \
         | head -5 | sed 's/^/    /' || echo "    (no data yet)"
 
     echo ""
     echo "  ── /telemetry ──"
     docker compose -f docker/docker-compose.yml run --rm ros2-cli \
-        bash -c "source /opt/ros/jazzy/setup.bash && timeout 5 ros2 topic echo /telemetry --once 2>/dev/null" 2>/dev/null \
+        bash -c "source /opt/ros/humble/setup.bash && timeout 5 ros2 topic echo /telemetry --once 2>/dev/null" 2>/dev/null \
         | head -15 | sed 's/^/    /' || echo "    (no data yet)"
 
     echo ""

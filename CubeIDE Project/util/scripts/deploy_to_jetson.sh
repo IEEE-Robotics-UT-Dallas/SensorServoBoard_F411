@@ -19,7 +19,7 @@ ssh "$DEST" "mkdir -p $WORKSPACE_DIR/src"
 rsync -avz --exclude 'build' --exclude 'install' --exclude 'log' "$REPO_ROOT/jetson_ws/src/" "$DEST:$WORKSPACE_DIR/src/"
 
 echo "Building workspace on Jetson..."
-ssh "$DEST" "cd $WORKSPACE_DIR && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install"
+ssh "$DEST" "cd $WORKSPACE_DIR && source /opt/ros/humble/setup.bash && colcon build --symlink-install"
 
 echo ""
 echo "Deployment complete! On the Jetson, you can now run:"
